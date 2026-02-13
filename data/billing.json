@@ -1,0 +1,215 @@
+{
+  "version": "1.0",
+  "items": [
+    {
+      "id": "a138d903-1353-47f1-b702-9197996b99e9",
+      "code": "1092020",
+      "name": "대상청정원유통_신선",
+      "type": "기본운임",
+      "note": "",
+      "rates": [
+        {
+          "id": "2cb6d652-112d-41f7-8eba-c60adc728edd",
+          "itemId": "a138d903-1353-47f1-b702-9197996b99e9",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "amount": 130000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-09T20:58:06.180Z"
+        }
+      ],
+      "createdAt": "2026-02-09T20:58:06.180Z",
+      "updatedAt": "2026-02-09T21:19:57.578Z",
+      "mergeCriteria": "name"
+    },
+    {
+      "id": "09f5f107-6fb5-4685-a45b-54a69a0f8da6",
+      "code": "1106361",
+      "name": "마음푸드_신선",
+      "type": "기본운임",
+      "note": "",
+      "rates": [
+        {
+          "id": "0e866d2e-9cb2-48ae-9d15-91773b0b99d5",
+          "itemId": "09f5f107-6fb5-4685-a45b-54a69a0f8da6",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "amount": 140000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-09T20:58:52.122Z"
+        }
+      ],
+      "createdAt": "2026-02-09T20:58:52.122Z",
+      "updatedAt": "2026-02-09T21:20:04.280Z",
+      "mergeCriteria": "name"
+    },
+    {
+      "id": "9355d01f-137d-494d-8d7c-f1e057701454",
+      "code": "1114428",
+      "name": "GS수퍼_부산",
+      "type": "기본운임",
+      "note": "",
+      "rates": [
+        {
+          "id": "6e76df9f-569a-4fbf-8c57-0e5919b6e420",
+          "itemId": "9355d01f-137d-494d-8d7c-f1e057701454",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "amount": 120000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-09T21:00:10.311Z"
+        }
+      ],
+      "createdAt": "2026-02-09T21:00:10.311Z",
+      "updatedAt": "2026-02-10T08:21:09.762Z",
+      "mergeCriteria": "code"
+    },
+    {
+      "id": "44c47f15-0ddf-4be9-891a-5a02cc0ed583",
+      "code": "1104105",
+      "name": "마켓컬리_창원저온",
+      "type": "기본운임",
+      "note": "",
+      "rates": [
+        {
+          "id": "e489ef5f-9b7a-41d0-8cc5-d23035f27b8c",
+          "itemId": "44c47f15-0ddf-4be9-891a-5a02cc0ed583",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "amount": 140000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-09T21:01:17.036Z"
+        }
+      ],
+      "createdAt": "2026-02-09T21:01:17.036Z",
+      "updatedAt": "2026-02-09T21:20:10.856Z",
+      "mergeCriteria": "name"
+    },
+    {
+      "id": "3dc216e8-4e2d-48b2-a530-d46e13cc5a41",
+      "code": "",
+      "name": "마켓컬리_창원(냉동)",
+      "type": "기본운임",
+      "mergeCriteria": "name",
+      "note": "",
+      "rates": [
+        {
+          "id": "9e958602-f347-4bac-af5f-eba390d5d3d9",
+          "itemId": "3dc216e8-4e2d-48b2-a530-d46e13cc5a41",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "amount": 140000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-09T21:20:59.293Z"
+        }
+      ],
+      "createdAt": "2026-02-09T21:20:59.293Z",
+      "updatedAt": "2026-02-09T21:20:59.293Z"
+    },
+    {
+      "id": "fd83c6d6-9d1e-48fa-9b58-ee9c8d5c8cd8",
+      "code": "",
+      "name": "GS수퍼_부산(냉동)",
+      "type": "기본운임",
+      "mergeCriteria": "name",
+      "note": "",
+      "rates": [
+        {
+          "id": "bcd292e1-b94d-4b5e-b5e4-8a01c458a200",
+          "itemId": "fd83c6d6-9d1e-48fa-9b58-ee9c8d5c8cd8",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "amount": 30000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-10T03:32:33.447Z"
+        }
+      ],
+      "createdAt": "2026-02-10T03:32:33.447Z",
+      "updatedAt": "2026-02-10T03:32:33.447Z"
+    },
+    {
+      "id": "b1311f9e-1e57-4293-a425-2fc3b0918fd0",
+      "code": "1109972 ",
+      "name": "GS수퍼_양산",
+      "type": "기본운임",
+      "mergeCriteria": "code",
+      "note": "",
+      "rates": [
+        {
+          "id": "b2794dfb-0743-49f2-8941-d71aa45856a9",
+          "itemId": "b1311f9e-1e57-4293-a425-2fc3b0918fd0",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "amount": 120000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-10T08:22:06.110Z"
+        }
+      ],
+      "createdAt": "2026-02-10T08:22:06.110Z",
+      "updatedAt": "2026-02-10T08:22:06.110Z"
+    },
+    {
+      "id": "303f0624-536c-4dbe-b33d-040d42855fad",
+      "code": "",
+      "name": "맘이오푸드-긴급",
+      "type": "기본운임",
+      "mergeCriteria": "name",
+      "note": "",
+      "rates": [
+        {
+          "id": "b3b6b6a8-154f-4f02-b895-39046be7f742",
+          "itemId": "303f0624-536c-4dbe-b33d-040d42855fad",
+          "validFrom": "2026-02-01",
+          "validTo": null,
+          "amount": 150000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-10T16:02:49.548Z"
+        }
+      ],
+      "createdAt": "2026-02-10T16:02:49.548Z",
+      "updatedAt": "2026-02-10T16:02:49.548Z"
+    },
+    {
+      "id": "77cb8105-f30c-441d-adac-bfd2ab5ba396",
+      "code": "",
+      "name": "(주)비에스_서울유통-긴급",
+      "type": "기본운임",
+      "mergeCriteria": "name",
+      "note": "",
+      "rates": [
+        {
+          "id": "c2a28b72-1a7b-4a0c-a9c3-1b06772acb42",
+          "itemId": "77cb8105-f30c-441d-adac-bfd2ab5ba396",
+          "validFrom": "2026-02-01",
+          "validTo": null,
+          "amount": 110000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-10T16:03:24.840Z"
+        }
+      ],
+      "createdAt": "2026-02-10T16:03:24.840Z",
+      "updatedAt": "2026-02-10T16:03:24.840Z"
+    },
+    {
+      "id": "8b4a1513-5dda-4fd1-965d-a764215e3144",
+      "code": "",
+      "name": "원진디에프-긴급",
+      "type": "기본운임",
+      "mergeCriteria": "name",
+      "note": "",
+      "rates": [
+        {
+          "id": "a73a61d4-b5fa-417c-a14b-bf86d2d74d1c",
+          "itemId": "8b4a1513-5dda-4fd1-965d-a764215e3144",
+          "validFrom": "2026-02-01",
+          "validTo": null,
+          "amount": 80000,
+          "note": "최초 등록",
+          "createdAt": "2026-02-10T16:06:35.441Z"
+        }
+      ],
+      "createdAt": "2026-02-10T16:06:35.441Z",
+      "updatedAt": "2026-02-10T16:06:35.441Z"
+    }
+  ]
+}
