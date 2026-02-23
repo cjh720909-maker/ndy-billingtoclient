@@ -311,7 +311,10 @@ export async function getInquiryBilling(params: {
   const { startDate, endDate, searchTerm } = params;
 
   try {
-    const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
+    const connection = await mysql.createConnection({
+      uri: process.env.MYSQL_URL,
+      connectTimeout: 5000
+    });
     try {
       await connection.query("SET NAMES 'latin1'");
 
@@ -392,9 +395,10 @@ export async function getInquiryBilling(params: {
     } finally {
       await connection.end();
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to fetch inquiry billing:', error);
-    return { success: false, error: '데이터를 가져오는 중 오류가 발생했습니다.' };
+    const errorMessage = error.code === 'ETIMEDOUT' ? 'MySQL 서버 연결 타임아웃 (네트워크 확인 필요)' : `DB 접속 실패: ${error.message}`;
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -566,7 +570,10 @@ export async function getEmergencyShipments(params: {
   const { startDate, endDate } = params;
 
   try {
-    const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
+    const connection = await mysql.createConnection({
+      uri: process.env.MYSQL_URL,
+      connectTimeout: 5000
+    });
     try {
       await connection.query("SET NAMES 'latin1'");
 
@@ -651,9 +658,10 @@ export async function getEmergencyShipments(params: {
     } finally {
       await connection.end();
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to fetch emergency shipments:', error);
-    return { success: false, error: '데이터를 가져오는 중 오류가 발생했습니다.' };
+    const errorMessage = error.code === 'ETIMEDOUT' ? 'MySQL 서버 연결 타임아웃' : `DB 접속 실패: ${error.message}`;
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -668,7 +676,10 @@ export async function getMonthlyBillingSummary(params: {
   const { startDate, endDate } = params;
 
   try {
-    const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
+    const connection = await mysql.createConnection({
+      uri: process.env.MYSQL_URL,
+      connectTimeout: 5000
+    });
     try {
       await connection.query("SET NAMES 'latin1'");
 
@@ -760,9 +771,10 @@ export async function getMonthlyBillingSummary(params: {
     } finally {
       await connection.end();
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to get monthly billing summary:', error);
-    return { success: false, error: '데이터를 가져오는 중 오류가 발생했습니다.' };
+    const errorMessage = error.code === 'ETIMEDOUT' ? 'MySQL 서버 연결 타임아웃' : `DB 접속 실패: ${error.message}`;
+    return { success: false, error: errorMessage };
   }
 }
 
