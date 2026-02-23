@@ -203,7 +203,7 @@ export default function Home() {
           { v: 150000, s: sCellNumber },
           { v: gs.weekday + gs.saturday + gs.sunday, s: sCellNumber },
           { v: gs.totalAmount, s: sCellNumber },
-          { v: `평일${gs.weekday}/토${gs.saturday}/일${gs.sunday}${gs.extraTrucks > 0 ? ` (2회전 ${gs.extraTrucks}회)` : ''}`, s: sCell }
+          { v: `평일 ${gs.weekday}/토 ${gs.saturday}/일 ${gs.sunday}${gs.extraTrucks > 0 ? ` (+2회전 ${gs.extraTrucks}회)` : ''}`, s: sCell }
         ]);
       }
       
@@ -238,7 +238,7 @@ export default function Home() {
           { v: Math.round(item.totalAmount / item.deliveryDays), s: sCellNumber },
           { v: item.deliveryDays, s: sCellNumber },
           { v: item.totalAmount, s: sCellNumber },
-          { v: '저장된 요약 정보', s: sCell }
+          { v: '정산 정보', s: sCell }
         ]);
       });
       wsData.push([]);
@@ -649,12 +649,9 @@ export default function Home() {
                               </td>
                               <td className="px-4 py-2.5 text-[12px] font-bold text-indigo-600 text-right">{gs.totalAmount.toLocaleString()}원</td>
                               <td className="px-4 py-2.5">
-                                <div className="flex flex-col gap-0.5">
-                                  <div className="text-[11px] text-slate-700 font-medium">{formattedDates}</div>
-                                  <div className="text-[10px] text-slate-500">
-                                    평일{gs.weekday} / 토{gs.saturday} / 일{gs.sunday}
-                                    {gs.extraTrucks > 0 && <span className="ml-1 text-amber-600 font-bold">(2회전 {gs.extraTrucks}회 가산)</span>}
-                                  </div>
+                                <div className="text-[11px] text-slate-700 font-bold">
+                                  평일 {gs.weekday} / 토 {gs.saturday} / 일 {gs.sunday}
+                                  {gs.extraTrucks > 0 && <span className="ml-2 text-amber-600 font-black">(+2회전 {gs.extraTrucks}회 가산)</span>}
                                 </div>
                               </td>
                               <td className="px-4 py-2.5"></td>
@@ -715,7 +712,7 @@ export default function Home() {
                               </td>
                               <td className="px-4 py-2.5 text-[12px] font-bold text-slate-700 text-right">{item.totalAmount.toLocaleString()}원</td>
                               <td className="px-4 py-2.5">
-                                <span className="text-[11px] text-slate-500 font-medium">{formattedDates}</span>
+                                <span className="text-[11px] text-slate-400 font-medium">정산 정보</span>
                               </td>
                               <td className="px-4 py-2.5"></td>
                             </tr>

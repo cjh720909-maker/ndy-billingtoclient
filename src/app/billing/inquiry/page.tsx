@@ -45,15 +45,14 @@ export default function BillingInquiryPage() {
     const savedData = sessionStorage.getItem('billing-inquiry-data');
     
     if (savedFilter) {
-      const { start, end, term } = JSON.parse(savedFilter);
+      const { start, end, term, isSaved: savedIsSaved } = JSON.parse(savedFilter);
       setStartDate(start);
       setEndDate(end);
       setSearchTerm(term);
+      setIsSaved(!!savedIsSaved);
       
       if (savedData) {
         setData(JSON.parse(savedData));
-        // 데이터가 이미 로드된 경우 isSaved 상태도 확인해야 함
-        fetchData(start, end, term);
       } else {
         fetchData(start, end, term);
       }
@@ -75,7 +74,7 @@ export default function BillingInquiryPage() {
       setData(result.data);
       setIsSaved(!!result.isSaved);
       setSelectedIds(new Set());
-      sessionStorage.setItem('billing-inquiry-filter', JSON.stringify({ start, end, term }));
+      sessionStorage.setItem('billing-inquiry-filter', JSON.stringify({ start, end, term, isSaved: result.isSaved }));
       sessionStorage.setItem('billing-inquiry-data', JSON.stringify(result.data));
     } else {
       setData([]);
@@ -144,7 +143,16 @@ export default function BillingInquiryPage() {
     try {
       const result = await saveInquirySettlements({
         records: selectedRecords.map(r => ({
-          ...r,
+          date: r.date,
+          name: r.name,
+          so: r.so,
+          nap: r.nap,
+          ton: r.ton,
+          kum: r.kum,
+          yo: r.yo,
+          chung: r.chung,
+          un: r.un,
+          memo: r.memo,
           startDate,
           endDate
         }))

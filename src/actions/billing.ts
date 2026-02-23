@@ -469,9 +469,18 @@ export async function saveInquirySettlements(params: {
       // 새 항목 추가
       await tx.inquirySettlement.createMany({
         data: params.records.map(r => ({
-          ...r,
           startDate: targetStart,
-          endDate: targetEnd
+          endDate: targetEnd,
+          date: r.date,
+          name: r.name,
+          so: r.so,
+          nap: r.nap,
+          ton: r.ton,
+          kum: r.kum,
+          yo: r.yo,
+          chung: r.chung,
+          un: r.un,
+          memo: r.memo
         }))
       });
     });

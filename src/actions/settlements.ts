@@ -163,32 +163,31 @@ export async function getIntegratedBillingSummary(params: {
   const endNum = Number(endDate.replace(/[^0-9]/g, ''));
 
   try {
-    // 1. 일일 출고 정산 요약 로드
-    const dailySummary = await prisma.dailySummary.findFirst({
-      where: { startDate, endDate },
-      include: { items: true }
-    });
-
-    // 2. GS 출고 정산 요약 로드
-    const gsSummary = await prisma.gSSummary.findFirst({
-      where: { startDate, endDate }
-    });
-
-    // 3. 긴급 출고 정산 요약 로드
-    const emergencySettlements = await prisma.emergencySettlement.findMany({
-      where: { startDate, endDate }
-    });
-
-    // 4. 청구 조회 정산 요약 로드
-    const inquirySettlements = await prisma.inquirySettlement.findMany({
-      where: { startDate: startNum.toString(), endDate: endNum.toString() } // normalizeDateStr 형식에 맞춤
-    });
-
-    // 5. 고정 비용 로드
-    const fixedSettlements = await prisma.fixedSettlement.findMany();
-
-    // 6. 청구처 매핑을 위해 청구 비용 관리 데이터 로드
-    const billingItems = await prisma.billingItem.findMany();
+    // 모든 데이터를 병렬로 로드하여 속도 개선
+    const [
+      dailySummary,
+      gsSummary,
+      emergencySettlements,
+      inquirySettlements,
+      fixedSettlements,
+      billingItems
+    ] = await Promise.all([
+      prisma.dailySummary.findFirst({
+        where: { startDate, endDate },
+        include: { items: true }
+      }),
+      prisma.gSSummary.findFirst({
+        where: { startDate, endDate }
+      }),
+      prisma.emergencySettlement.findMany({
+        where: { startDate: startNum.toString(), endDate: endNum.toString() }
+      }),
+      prisma.inquirySettlement.findMany({
+        where: { startDate: startNum.toString(), endDate: endNum.toString() }
+      }),
+      prisma.fixedSettlement.findMany(),
+      prisma.billingItem.findMany()
+    ]);
 
     // 일일 출고 항목에 청구처 정보 매핑
     const dailyWithBilling = (dailySummary?.items || []).map((item: any) => {
@@ -203,7 +202,7 @@ export async function getIntegratedBillingSummary(params: {
       success: true,
       data: {
         daily: dailyWithBilling,
-        gs: gsSummary,
+        gs: gsSummary ? { summary: gsSummary } : null,
         emergency: emergencySettlements,
         inquiry: inquirySettlements,
         fixed: fixedSettlements
