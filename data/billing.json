@@ -19,8 +19,9 @@
         }
       ],
       "createdAt": "2026-02-09T20:58:06.180Z",
-      "updatedAt": "2026-02-09T21:19:57.578Z",
-      "mergeCriteria": "name"
+      "updatedAt": "2026-02-19T07:45:18.865Z",
+      "mergeCriteria": "name",
+      "billingRecipient": "경남2지점"
     },
     {
       "id": "09f5f107-6fb5-4685-a45b-54a69a0f8da6",
@@ -40,8 +41,9 @@
         }
       ],
       "createdAt": "2026-02-09T20:58:52.122Z",
-      "updatedAt": "2026-02-09T21:20:04.280Z",
-      "mergeCriteria": "name"
+      "updatedAt": "2026-02-19T07:45:53.270Z",
+      "mergeCriteria": "name",
+      "billingRecipient": "울산지점"
     },
     {
       "id": "9355d01f-137d-494d-8d7c-f1e057701454",
@@ -61,8 +63,9 @@
         }
       ],
       "createdAt": "2026-02-09T21:00:10.311Z",
-      "updatedAt": "2026-02-10T08:21:09.762Z",
-      "mergeCriteria": "code"
+      "updatedAt": "2026-02-19T07:44:57.500Z",
+      "mergeCriteria": "code",
+      "billingRecipient": "KAM1팀"
     },
     {
       "id": "44c47f15-0ddf-4be9-891a-5a02cc0ed583",
@@ -82,8 +85,9 @@
         }
       ],
       "createdAt": "2026-02-09T21:01:17.036Z",
-      "updatedAt": "2026-02-09T21:20:10.856Z",
-      "mergeCriteria": "name"
+      "updatedAt": "2026-02-19T07:47:29.545Z",
+      "mergeCriteria": "name",
+      "billingRecipient": "신선센터"
     },
     {
       "id": "3dc216e8-4e2d-48b2-a530-d46e13cc5a41",
@@ -104,7 +108,8 @@
         }
       ],
       "createdAt": "2026-02-09T21:20:59.293Z",
-      "updatedAt": "2026-02-09T21:20:59.293Z"
+      "updatedAt": "2026-02-19T07:47:37.117Z",
+      "billingRecipient": "신선센터"
     },
     {
       "id": "fd83c6d6-9d1e-48fa-9b58-ee9c8d5c8cd8",
@@ -125,7 +130,8 @@
         }
       ],
       "createdAt": "2026-02-10T03:32:33.447Z",
-      "updatedAt": "2026-02-10T03:32:33.447Z"
+      "updatedAt": "2026-02-19T07:44:28.563Z",
+      "billingRecipient": "KAM1팀"
     },
     {
       "id": "b1311f9e-1e57-4293-a425-2fc3b0918fd0",
@@ -146,70 +152,8 @@
         }
       ],
       "createdAt": "2026-02-10T08:22:06.110Z",
-      "updatedAt": "2026-02-10T08:22:06.110Z"
-    },
-    {
-      "id": "303f0624-536c-4dbe-b33d-040d42855fad",
-      "code": "",
-      "name": "맘이오푸드-긴급",
-      "type": "기본운임",
-      "mergeCriteria": "name",
-      "note": "",
-      "rates": [
-        {
-          "id": "b3b6b6a8-154f-4f02-b895-39046be7f742",
-          "itemId": "303f0624-536c-4dbe-b33d-040d42855fad",
-          "validFrom": "2026-02-01",
-          "validTo": null,
-          "amount": 150000,
-          "note": "최초 등록",
-          "createdAt": "2026-02-10T16:02:49.548Z"
-        }
-      ],
-      "createdAt": "2026-02-10T16:02:49.548Z",
-      "updatedAt": "2026-02-10T16:02:49.548Z"
-    },
-    {
-      "id": "77cb8105-f30c-441d-adac-bfd2ab5ba396",
-      "code": "",
-      "name": "(주)비에스_서울유통-긴급",
-      "type": "기본운임",
-      "mergeCriteria": "name",
-      "note": "",
-      "rates": [
-        {
-          "id": "c2a28b72-1a7b-4a0c-a9c3-1b06772acb42",
-          "itemId": "77cb8105-f30c-441d-adac-bfd2ab5ba396",
-          "validFrom": "2026-02-01",
-          "validTo": null,
-          "amount": 110000,
-          "note": "최초 등록",
-          "createdAt": "2026-02-10T16:03:24.840Z"
-        }
-      ],
-      "createdAt": "2026-02-10T16:03:24.840Z",
-      "updatedAt": "2026-02-10T16:03:24.840Z"
-    },
-    {
-      "id": "8b4a1513-5dda-4fd1-965d-a764215e3144",
-      "code": "",
-      "name": "원진디에프-긴급",
-      "type": "기본운임",
-      "mergeCriteria": "name",
-      "note": "",
-      "rates": [
-        {
-          "id": "a73a61d4-b5fa-417c-a14b-bf86d2d74d1c",
-          "itemId": "8b4a1513-5dda-4fd1-965d-a764215e3144",
-          "validFrom": "2026-02-01",
-          "validTo": null,
-          "amount": 80000,
-          "note": "최초 등록",
-          "createdAt": "2026-02-10T16:06:35.441Z"
-        }
-      ],
-      "createdAt": "2026-02-10T16:06:35.441Z",
-      "updatedAt": "2026-02-10T16:06:35.441Z"
+      "updatedAt": "2026-02-19T07:44:49.497Z",
+      "billingRecipient": "KAM1팀"
     }
   ]
 }

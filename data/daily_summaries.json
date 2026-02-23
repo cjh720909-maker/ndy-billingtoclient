@@ -1,0 +1,36 @@
+[
+  {
+    "id": "daily_sum_1771686095729",
+    "startDate": "2026-01-26",
+    "endDate": "2026-02-25",
+    "items": [
+      {
+        "placeName": "GS수퍼_부산(냉동)",
+        "deliveryDays": 14,
+        "totalAmount": 420000
+      },
+      {
+        "placeName": "대상청정원유통_신선",
+        "deliveryDays": 19,
+        "totalAmount": 2470000
+      },
+      {
+        "placeName": "마음푸드_신선",
+        "deliveryDays": 22,
+        "totalAmount": 3080000
+      },
+      {
+        "placeName": "마켓컬리_창원(냉동)",
+        "deliveryDays": 6,
+        "totalAmount": 840000
+      },
+      {
+        "placeName": "마켓컬리_창원저온",
+        "deliveryDays": 21,
+        "totalAmount": 2940000
+      }
+    ],
+    "createdAt": "2026-02-21T15:01:35.729Z",
+    "updatedAt": "2026-02-21T15:01:35.729Z"
+  }
+]

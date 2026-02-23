@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, 
   RotateCcw,
-  ArrowRight
+  ArrowRight,
+  Settings,
+  Save,
+  X
 } from 'lucide-react';
-import { getDailySettlements } from '@/actions/settlements';
+import { getDailySettlements, getGSPickingConfig, updateGSPickingConfig } from '@/actions/settlements';
 
 export default function GSPickingSettlementPage() {
   const [startDate, setStartDate] = useState('');
@@ -15,6 +18,12 @@ export default function GSPickingSettlementPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [totals, setTotals] = useState({ qty: 0 });
+
+  // Configuration State
+  const [config, setConfig] = useState({ boxesPerPallet: 78, ratePerPallet: 8000 });
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [tempConfig, setTempConfig] = useState({ boxesPerPallet: 78, ratePerPallet: 8000 });
+  const [savingConfig, setSavingConfig] = useState(false);
 
   const getKSTToday = () => {
     const now = new Date();
@@ -31,6 +40,16 @@ export default function GSPickingSettlementPage() {
   };
 
   useEffect(() => {
+    // Load config
+    const loadConfig = async () => {
+      const res = await getGSPickingConfig();
+      if (res.success) {
+        setConfig(res.data);
+        setTempConfig(res.data);
+      }
+    };
+    loadConfig();
+
     // sessionStorage에서 이전 상태 복구
     const savedFilter = sessionStorage.getItem('gs-picking-filter');
     const savedData = sessionStorage.getItem('gs-picking-data');
@@ -89,27 +108,46 @@ export default function GSPickingSettlementPage() {
     fetchData(startDate, endDate, searchTerm);
   };
 
-  const setMonthCurrent = () => {
+  const setMonthCurrent = (triggerSearch = true) => {
     const today = getKSTToday();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    setStartDate(formatDate(firstDay));
-    setEndDate(formatDate(today));
+    const start = formatDate(firstDay);
+    const end = formatDate(today);
+    setStartDate(start);
+    setEndDate(end);
+    if (triggerSearch) fetchData(start, end, searchTerm);
   };
 
   const setMonthPrevious = () => {
     const today = getKSTToday();
     const firstDayPrev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0); 
-    setStartDate(formatDate(firstDayPrev));
-    setEndDate(formatDate(lastDayPrev));
+    const start = formatDate(firstDayPrev);
+    const end = formatDate(lastDayPrev);
+    setStartDate(start);
+    setEndDate(end);
+    fetchData(start, end, searchTerm);
   };
 
   const setPayCycleRange = () => {
     const today = getKSTToday();
-    const start = new Date(today.getFullYear(), today.getMonth() - 1, 26);
-    const end = new Date(today.getFullYear(), today.getMonth(), 25);
-    setStartDate(formatDate(start));
-    setEndDate(formatDate(end));
+    const start = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
+    const end = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
+    setStartDate(start);
+    setEndDate(end);
+    fetchData(start, end, searchTerm);
+  };
+
+  const handleSaveConfig = async () => {
+    setSavingConfig(true);
+    const res = await updateGSPickingConfig(tempConfig);
+    if (res.success) {
+      setConfig(tempConfig);
+      setIsSettingsModalOpen(false);
+    } else {
+      alert('설정 저장 중 오류가 발생했습니다.');
+    }
+    setSavingConfig(false);
   };
 
   // 피벗 매트릭스 데이터 가공
@@ -146,16 +184,16 @@ export default function GSPickingSettlementPage() {
         const qty = grid[date]?.[code] || 0;
         dailyQty += qty;
         if (qty > 0) {
-          const pallets = Math.ceil(qty / 78);
+          const pallets = Math.ceil(qty / config.boxesPerPallet);
           dailyPallets += pallets;
         }
       });
-      dailyAmount = dailyPallets * 8000;
+      dailyAmount = dailyPallets * config.ratePerPallet;
       settlementInfo[date] = { amount: dailyAmount, pallets: dailyPallets, qty: dailyQty };
     });
 
     return { dates, places, grid, dateTotals, placeTotals, settlementInfo };
-  }, [data]);
+  }, [data, config]);
 
   const dayCounts = React.useMemo(() => {
     let weekday = 0, saturday = 0, sunday = 0;
@@ -179,16 +217,38 @@ export default function GSPickingSettlementPage() {
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" />
             </div>
             <div className="flex gap-1">
-              <button onClick={setMonthCurrent} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">당월</button>
-              <button onClick={setMonthPrevious} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">전월</button>
-              <button onClick={setPayCycleRange} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">25일</button>
+              <button onClick={() => setMonthCurrent()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">당월</button>
+              <button onClick={() => setMonthPrevious()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">전월</button>
+              <button onClick={() => setPayCycleRange()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">25일</button>
             </div>
           </div>
           <div className="flex gap-1.5">
+            <button 
+              onClick={() => {
+                setTempConfig(config);
+                setIsSettingsModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-[12px] font-bold hover:bg-slate-200 flex items-center gap-1.5"
+            >
+              <Settings size={13} /> 설정
+            </button>
             <button onClick={handleSearch} disabled={loading} className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5">
               {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={13} />} 조회
             </button>
-            <button onClick={() => {setMonthCurrent(); fetchData(startDate, endDate, '');}} className="p-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200"><RotateCcw size={14} /></button>
+            <button 
+              onClick={() => {
+                const today = getKSTToday();
+                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                const start = formatDate(firstDay);
+                const end = formatDate(today);
+                setStartDate(start);
+                setEndDate(end);
+                fetchData(start, end, '');
+              }} 
+              className="p-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200"
+            >
+              <RotateCcw size={14} />
+            </button>
           </div>
         </div>
       </div>
@@ -204,6 +264,7 @@ export default function GSPickingSettlementPage() {
                   <span className="text-[11px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded border border-slate-200">평일 {dayCounts.weekday}</span>
                   <span className="text-[11px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded border border-blue-100">토 {dayCounts.saturday}</span>
                   <span className="text-[11px] px-1.5 py-0.5 bg-red-50 text-red-600 rounded border border-red-100 font-bold">일 {dayCounts.sunday}</span>
+                  <span className="text-[10px] text-slate-400 ml-2 font-normal">(기준: 파렛트당 {config.boxesPerPallet}박스 / {config.ratePerPallet.toLocaleString()}원)</span>
                 </span>
               )}
             </h3>
@@ -243,7 +304,7 @@ export default function GSPickingSettlementPage() {
                     <td className="sticky left-0 z-20 bg-white px-4 py-1.5 text-[11px] font-bold text-slate-600 border-r border-slate-200">{date}</td>
                     {matrixData.places.map(place => {
                       const qty = matrixData.grid[date]?.[place.code] || 0;
-                      const pl = qty > 0 ? Math.ceil(qty / 78) : 0;
+                      const pl = qty > 0 ? Math.ceil(qty / config.boxesPerPallet) : 0;
                       return (
                         <React.Fragment key={`${date}-${place.code}`}>
                           <td className="px-2 py-1.5 text-[11px] text-right border-r border-slate-50">{qty > 0 ? qty.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 1 }) : '-'}</td>
@@ -260,10 +321,10 @@ export default function GSPickingSettlementPage() {
                   <td className="sticky left-0 z-30 bg-slate-100 px-4 py-2 text-[11px] text-slate-700 border-r border-slate-200">총계</td>
                   {matrixData.places.map(place => {
                     const totalQty = matrixData.placeTotals[place.code] || 0;
-                    // 총계의 파렛트 합산은 각 날짜별 파렛트의 합이어야 함 (단순 총박스/78 아님)
+                    // 총계의 파렛트 합산은 각 날짜별 파렛트의 합이어야 함 (단순 총박스/boxesPerPallet 아님)
                     const totalPL = matrixData.dates.reduce((acc, date) => {
                       const dayQty = matrixData.grid[date]?.[place.code] || 0;
-                      return acc + (dayQty > 0 ? Math.ceil(dayQty / 78) : 0);
+                      return acc + (dayQty > 0 ? Math.ceil(dayQty / config.boxesPerPallet) : 0);
                     }, 0);
                     return (
                       <React.Fragment key={`total-${place.code}`}>
@@ -292,6 +353,93 @@ export default function GSPickingSettlementPage() {
           </div>
         )}
       </div>
+
+      {/* Settings Modal */}
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings className="text-indigo-600" size={18} />
+                <h3 className="font-bold text-slate-800">피킹 비용 정산 기준 설정</h3>
+              </div>
+              <button 
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                disabled={savingConfig}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-1.5 text-center">
+                   <div className="text-[14px] font-bold text-slate-700">파렛트당 박스 수 기준</div>
+                   <div className="text-[11px] text-slate-400 leading-relaxed">
+                     한 파렛트를 구성하는 기본 박스 수량을 입력하세요.<br/>
+                     예: 78박스 초과 시 2파렛트로 계산됩니다.
+                   </div>
+                </div>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={tempConfig.boxesPerPallet}
+                    onChange={(e) => setTempConfig(prev => ({ ...prev, boxesPerPallet: Number(e.target.value) }))}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-[18px] font-bold text-indigo-950 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">박스</span>
+                </div>
+              </div>
+
+              <div className="h-px bg-slate-100" />
+
+              <div className="space-y-4">
+                <div className="space-y-1.5 text-center">
+                   <div className="text-[14px] font-bold text-slate-700">파렛트당 단가 설정</div>
+                   <div className="text-[11px] text-slate-400 leading-relaxed">
+                     계산된 파렛트(PL)당 적용할 단가를 입력하세요.
+                   </div>
+                </div>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={tempConfig.ratePerPallet}
+                    onChange={(e) => setTempConfig(prev => ({ ...prev, ratePerPallet: Number(e.target.value) }))}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-[18px] font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">원</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button 
+                  onClick={() => setIsSettingsModalOpen(false)}
+                  className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-[14px] font-bold hover:bg-slate-200 transition-all"
+                  disabled={savingConfig}
+                >
+                  취소
+                </button>
+                <button 
+                  onClick={handleSaveConfig}
+                  className="flex-2 px-8 py-3 bg-indigo-600 text-white rounded-xl text-[14px] font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+                  disabled={savingConfig}
+                >
+                  {savingConfig ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Save size={16} />
+                  )}
+                  설정 저장 및 적용
+                </button>
+              </div>
+              <p className="text-[10px] text-center text-slate-400 italic">
+                * 저장 시 현재 조회된 데이터와 표에 즉시 반영됩니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

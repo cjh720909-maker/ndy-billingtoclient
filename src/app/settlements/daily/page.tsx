@@ -7,9 +7,11 @@ import {
   Filter, 
   RotateCcw,
   ArrowRight,
-  TrendingUp
+  TrendingUp,
+  Save,
+  CheckCircle
 } from 'lucide-react';
-import { getDailySettlements } from '@/actions/settlements';
+import { getDailySettlements, saveDailySummary } from '@/actions/settlements';
 import { getBillingItems, BillingItem } from '@/actions/billing';
 
 export default function DailySettlementPage() {
@@ -20,6 +22,8 @@ export default function DailySettlementPage() {
   const [loading, setLoading] = useState(false);
   const [totals, setTotals] = useState({ qty: 0, weight: 0 });
   const [billingItems, setBillingItems] = useState<BillingItem[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   // 날짜 유틸리티: 순수 로컬 시간(KST) 기준으로 문자열 포맷팅
   const getKSTToday = () => {
@@ -50,10 +54,11 @@ export default function DailySettlementPage() {
       const savedData = sessionStorage.getItem('daily-settlement-data');
       
       if (savedFilter) {
-        const { start, end, term } = JSON.parse(savedFilter);
+        const { start, end, term, isSaved: savedIsSaved } = JSON.parse(savedFilter);
         setStartDate(start);
         setEndDate(end);
         setSearchTerm(term);
+        setIsSaved(!!savedIsSaved);
         
         if (savedData) {
           const parsedData = JSON.parse(savedData);
@@ -66,9 +71,8 @@ export default function DailySettlementPage() {
         }
       } else {
         const today = getKSTToday();
-        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-        const startStr = formatDate(firstDay);
-        const endStr = formatDate(today);
+        const startStr = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
+        const endStr = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
         
         setStartDate(startStr);
         setEndDate(endStr);
@@ -84,15 +88,17 @@ export default function DailySettlementPage() {
     const result = await getDailySettlements({ startDate: start, endDate: end, searchTerm: term });
     if (result.success && result.data) {
       setData(result.data);
+      setIsSaved(!!result.isSaved);
       const qSum = result.data.reduce((acc: number, cur: any) => acc + Number(String(cur.qty).replace(/,/g, '')), 0);
       const wSum = result.data.reduce((acc: number, cur: any) => acc + Number(String(cur.weight).replace(/,/g, '')), 0);
       setTotals({ qty: qSum, weight: wSum });
       
       // 상태 저장
-      sessionStorage.setItem('daily-settlement-filter', JSON.stringify({ start, end, term }));
+      sessionStorage.setItem('daily-settlement-filter', JSON.stringify({ start, end, term, isSaved: result.isSaved }));
       sessionStorage.setItem('daily-settlement-data', JSON.stringify(result.data));
     } else {
       setData([]);
+      setIsSaved(false);
       setTotals({ qty: 0, weight: 0 });
       sessionStorage.removeItem('daily-settlement-data');
     }
@@ -101,17 +107,71 @@ export default function DailySettlementPage() {
 
   // 조회 버튼 클릭 시 호출
   const handleSearch = () => {
+    setIsSaved(false);
     fetchData(startDate, endDate, searchTerm);
   };
 
+  const handleSave = async () => {
+    if (data.length === 0) return;
+    setSaving(true);
+
+    try {
+      // 납품처별 요약 데이터 추출
+      const summaryItems = matrixData.places.map(place => {
+        const price = getPrice(place.name);
+        const count = matrixData.placeCounts[place.name] || 0;
+        
+        // 해당 업체의 실제 배송 발생 일자 리스트 추출
+        const deliveryDates = matrixData.dates.filter(date => {
+          const val = matrixData.grid[date]?.[place.name];
+          return val && val > 0;
+        });
+
+        return {
+          placeName: place.name,
+          deliveryDays: count,
+          totalAmount: price * count,
+          deliveryDates
+        };
+      });
+
+      const result = await saveDailySummary({
+        startDate,
+        endDate,
+        items: summaryItems
+      });
+
+      if (result.success) {
+        setIsSaved(true);
+        // 세션 스토리지의 isSaved 상태도 업데이트
+        const savedFilter = sessionStorage.getItem('daily-settlement-filter');
+        if (savedFilter) {
+          const filterObj = JSON.parse(savedFilter);
+          filterObj.isSaved = true;
+          sessionStorage.setItem('daily-settlement-filter', JSON.stringify(filterObj));
+        }
+        alert('일일 출고 정산 요약 정보가 저장되었습니다.');
+      } else {
+        alert('저장에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('Failed to save daily summary:', error);
+      alert('저장 중 오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // 당월: 이번 달 1일 ~ 오늘
-  const setMonthCurrent = () => {
+  const setMonthCurrent = (triggerSearch = true) => {
     const today = getKSTToday();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const start = formatDate(firstDay);
+    const end = formatDate(today);
     
-    setStartDate(formatDate(firstDay));
-    setEndDate(formatDate(today));
-    // 버튼 클릭 시 날짜만 변경
+    setStartDate(start);
+    setEndDate(end);
+    if (triggerSearch) fetchData(start, end, searchTerm);
   };
 
   // 전월: 지난 달 1일 ~ 지난 달 말일
@@ -119,19 +179,23 @@ export default function DailySettlementPage() {
     const today = getKSTToday();
     const firstDayPrev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0); // 이번 달 0일 = 지난 달 말일
+    const start = formatDate(firstDayPrev);
+    const end = formatDate(lastDayPrev);
     
-    setStartDate(formatDate(firstDayPrev));
-    setEndDate(formatDate(lastDayPrev));
+    setStartDate(start);
+    setEndDate(end);
+    fetchData(start, end, searchTerm);
   };
 
   // 25일 기준: 전월 26일 ~ 당월 25일
   const setPayCycleRange = () => {
     const today = getKSTToday();
-    const start = new Date(today.getFullYear(), today.getMonth() - 1, 26);
-    const end = new Date(today.getFullYear(), today.getMonth(), 25);
+    const start = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
+    const end = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
     
-    setStartDate(formatDate(start));
-    setEndDate(formatDate(end));
+    setStartDate(start);
+    setEndDate(end);
+    fetchData(start, end, searchTerm);
   };
 
   // 매트릭스 데이터 계산 (데이터 변경 시 재계산)
@@ -227,9 +291,9 @@ export default function DailySettlementPage() {
               />
             </div>
             <div className="flex gap-1">
-              <button onClick={setMonthCurrent} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">당월</button>
-              <button onClick={setMonthPrevious} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">전월</button>
-              <button onClick={setPayCycleRange} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">25일</button>
+              <button onClick={() => setMonthCurrent()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">당월</button>
+              <button onClick={() => setMonthPrevious()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">전월</button>
+              <button onClick={() => setPayCycleRange()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">25일</button>
             </div>
           </div>
 
@@ -237,13 +301,40 @@ export default function DailySettlementPage() {
           <div className="flex gap-1.5">
             <button 
               onClick={handleSearch}
-              disabled={loading}
+              disabled={loading || saving}
               className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-[12px] font-bold hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
             >
               {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={13} />} 조회
             </button>
             <button 
-              onClick={() => {setMonthCurrent(); fetchData(startDate, endDate, '');}}
+              onClick={handleSave}
+              disabled={loading || saving || data.length === 0}
+              className={`
+                px-4 py-1.5 rounded-lg text-[12px] font-bold shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50
+                ${isSaved 
+                  ? 'bg-emerald-500 text-white hover:bg-emerald-600' 
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}
+              `}
+            >
+              {saving ? (
+                <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                isSaved ? <CheckCircle size={13} /> : <Save size={13} />
+              )}
+              {isSaved ? '저장됨' : '결과 저장'}
+            </button>
+            <button 
+              onClick={() => {
+                const today = getKSTToday();
+                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                const start = formatDate(firstDay);
+                const end = formatDate(today);
+                setStartDate(start);
+                setEndDate(end);
+                setSearchTerm('');
+                setIsSaved(false);
+                fetchData(start, end, '');
+              }}
               className="p-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200 transition-all"
               title="초기화"
             >

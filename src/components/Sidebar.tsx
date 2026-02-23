@@ -21,7 +21,7 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-const menuItems = [
+export const allMenuItems = [
   { 
     name: '지점청구', 
     enName: 'Branch Billing', 
@@ -47,8 +47,8 @@ const menuItems = [
     icon: CreditCard 
   },
   { 
-    name: '청구 비용 입력', 
-    enName: 'Billing Input', 
+    name: '청구 비용 관리', 
+    enName: 'Billing Management', 
     href: '/billing/input', 
     icon: PenTool 
   },
@@ -65,6 +65,9 @@ const menuItems = [
     icon: AlertCircle 
   },
 ];
+
+// 사이드바에 표시될 메뉴 (사용자 요청에 따라 전체 노출)
+export const menuItems = allMenuItems;
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();

@@ -37,6 +37,7 @@ export default function BillingInputPage() {
   const [formData, setFormData] = useState({
     code: '',
     name: '',
+    billingRecipient: '', // 비용청구처 추가
     amount: 0,
     validFrom: '',
     note: '',
@@ -79,6 +80,7 @@ export default function BillingInputPage() {
     const result = await addBillingItem({
       code: formData.code,
       name: formData.name,
+      billingRecipient: formData.billingRecipient,
       amount: Number(formData.amount),
       validFrom: formData.validFrom,
       note: formData.note,
@@ -88,7 +90,7 @@ export default function BillingInputPage() {
     if (result.success) {
       alert('등록되었습니다.');
       setShowAddModal(false);
-      setFormData({ code: '', name: '', amount: 0, validFrom: '', note: '', mergeCriteria: 'name' });
+      setFormData({ code: '', name: '', billingRecipient: '', amount: 0, validFrom: '', note: '', mergeCriteria: 'name' });
       loadData();
     } else {
       alert('등록 실패: ' + result.error);
@@ -109,7 +111,7 @@ export default function BillingInputPage() {
     if (result.success) {
       alert('단가가 변경되었습니다.');
       setShowRateModal(false);
-      setFormData({ code: '', name: '', amount: 0, validFrom: '', note: '', mergeCriteria: 'name' });
+      setFormData({ code: '', name: '', billingRecipient: '', amount: 0, validFrom: '', note: '', mergeCriteria: 'name' });
       loadData();
       const updatedItem = result.data;
       if (updatedItem) setSelectedItem(updatedItem); 
@@ -126,6 +128,7 @@ export default function BillingInputPage() {
       id: selectedItem.id,
       code: formData.code,
       name: formData.name,
+      billingRecipient: formData.billingRecipient,
       amount: Number(formData.amount),
       validFrom: formData.validFrom,
       note: formData.note,
@@ -171,7 +174,7 @@ export default function BillingInputPage() {
         <button 
           onClick={() => {
             const today = new Date().toISOString().split('T')[0];
-            setFormData({ code: '', name: '', amount: 0, validFrom: today, note: '', mergeCriteria: 'name' });
+            setFormData({ code: '', name: '', billingRecipient: '', amount: 0, validFrom: today, note: '', mergeCriteria: 'name' });
             setShowAddModal(true);
           }}
           className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
@@ -180,9 +183,9 @@ export default function BillingInputPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-12 gap-6 flex-1 min-h-0">
+      <div className="grid grid-cols-2 gap-6 flex-1 min-h-0">
         {/* Left Panel: List */}
-        <div className="col-span-4 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 border-b border-slate-100 bg-slate-50/50">
             <div className="relative">
               <input 
@@ -211,32 +214,35 @@ export default function BillingInputPage() {
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
                     className={`
-                      p-3 rounded-lg cursor-pointer transition-all border
+                      p-2 rounded-lg cursor-pointer transition-all border
                       ${isSelected 
                         ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
                         : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-200'}
                     `}
                   >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-bold text-slate-800 text-sm">{item.name || '(이름 없음)'}</span>
-                      <div className="flex gap-1">
-                        {/* 정산 기준 배지 복원 */}
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${item.mergeCriteria === 'code' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-                          코드
-                        </span>
-                         <span className={`text-[10px] px-1.5 py-0.5 rounded border ${item.mergeCriteria === 'name' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-                          명칭
-                        </span>
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-2 overflow-hidden flex-1">
+                        <span className="text-[11px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">{item.code || '-'}</span>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-bold text-slate-800 text-[12px] truncate">{item.name || '(이름 없음)'}</span>
+                          {item.billingRecipient && (
+                            <span className="text-[10px] text-indigo-500 font-medium truncate">➡ {item.billingRecipient}</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{item.code || '-'}</span>
-                         <span className="text-xs text-slate-500 truncate max-w-[80px]">{item.note || '-'}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-[12px] font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-700'}`}>
+                          {currentRate?.amount.toLocaleString()}원
+                        </span>
+                        <div className="flex gap-0.5 ml-1">
+                          <span className={`text-[9px] px-1 py-0 rounded border ${item.mergeCriteria === 'code' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-300 border-slate-100'}`}>
+                            코드
+                          </span>
+                          <span className={`text-[9px] px-1 py-0 rounded border ${item.mergeCriteria === 'name' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-300 border-slate-100'}`}>
+                            명칭
+                          </span>
+                        </div>
                       </div>
-                      <span className={`text-sm font-bold ${isSelected ? 'text-indigo-600' : 'text-slate-700'}`}>
-                        {currentRate?.amount.toLocaleString()}원
-                      </span>
                     </div>
                   </div>
                 );
@@ -246,7 +252,7 @@ export default function BillingInputPage() {
         </div>
 
         {/* Right Panel: Details & History */}
-        <div className="col-span-8 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
           {selectedItem ? (
             <div className="flex-1 flex flex-col min-h-0">
               {/* Detail Header */}
@@ -263,6 +269,11 @@ export default function BillingInputPage() {
                         {selectedItem.mergeCriteria === 'code' ? '코드 기준 정산' : '명칭 기준 정산'}
                         <CheckCircle2 size={12} />
                       </span>
+                      {selectedItem.billingRecipient && (
+                        <span className="px-2 py-1 text-xs font-bold rounded-md bg-indigo-100 text-indigo-700 flex items-center gap-1">
+                          청구처: {selectedItem.billingRecipient}
+                        </span>
+                      )}
                   </div>
                    <div className="flex items-center gap-2 text-sm text-slate-500">
                       <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-xs">{selectedItem.code || '코드 없음'}</span>
@@ -277,6 +288,7 @@ export default function BillingInputPage() {
                       setFormData({
                         code: selectedItem.code,
                         name: selectedItem.name,
+                        billingRecipient: selectedItem.billingRecipient || '',
                         amount: currentRate?.amount || 0,
                         validFrom: currentRate?.validFrom || '',
                         note: selectedItem.note,
@@ -318,6 +330,7 @@ export default function BillingInputPage() {
                         setFormData({ 
                           code: selectedItem.code, 
                           name: selectedItem.name, 
+                          billingRecipient: selectedItem.billingRecipient || '',
                           amount: getCurrentRate(selectedItem)?.amount || 0,
                           validFrom: today,
                           note: '',
@@ -438,6 +451,16 @@ export default function BillingInputPage() {
                   onChange={e => setFormData({...formData, name: e.target.value})}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                   placeholder="예: 화림유통"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">비용청구처 (실제 청구 대상)</label>
+                <input 
+                  type="text" 
+                  value={formData.billingRecipient}
+                  onChange={e => setFormData({...formData, billingRecipient: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  placeholder="예: GS리테일 또는 본사"
                 />
               </div>
               <div>
@@ -605,6 +628,16 @@ export default function BillingInputPage() {
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">비용청구처</label>
+                <input 
+                  type="text" 
+                  value={formData.billingRecipient}
+                  onChange={e => setFormData({...formData, billingRecipient: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  placeholder="실제 청구 대상 업체명"
+                />
               </div>
               
               <div>

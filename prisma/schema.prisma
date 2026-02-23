@@ -1804,3 +1804,20 @@ model t_tmp3 {
 
   @@ignore
 }
+
+/// GS 출고 정산 데이터 (일별/납품처별 저장)
+model t_gs_settlement {
+  GS_IDX      Int      @id @default(autoincrement())
+  GS_DATE     String   @db.VarChar(10) // 날짜 (YYYY-MM-DD)
+  GS_CODE     String   @db.VarChar(20) // 납품처 코드
+  GS_NAME     String?  @db.VarChar(80) // 납품처 명
+  GS_QTY      Decimal  @default(0.0) @db.Decimal(11, 2) // 박스 수량
+  GS_WEIGHT   Decimal  @default(0.0) @db.Decimal(11, 2) // 중량
+  GS_AMOUNT   Int      @default(0)     // 정산 금액
+  GS_REMARKS  String?  @db.VarChar(200) // 비고 (수정 사유 등)
+  GS_CONFIRM  String   @default("N") @db.Char(1) // 확정 여부 (선택 사항)
+  GS_REGDATE  DateTime @default(now()) // 등록일
+  GS_MODDATE  DateTime @updatedAt      // 수정일
+
+  @@unique([GS_DATE, GS_CODE], map: "GS_UNIQUE")
+}

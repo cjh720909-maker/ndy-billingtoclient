@@ -1,0 +1,16 @@
+[
+  {
+    "id": "gs_sum_1771603182583",
+    "startDate": "2026-01-26",
+    "endDate": "2026-02-25",
+    "summary": {
+      "weekday": 17,
+      "saturday": 0,
+      "sunday": 2,
+      "extraTrucks": 1,
+      "totalAmount": 2970000
+    },
+    "createdAt": "2026-02-20T15:59:42.583Z",
+    "updatedAt": "2026-02-20T15:59:42.583Z"
+  }
+]
