@@ -2,8 +2,7 @@
 
 import mysql from 'mysql2/promise';
 import iconv from 'iconv-lite';
-import { promises as fs } from 'fs';
-import path from 'path';
+import prisma from '@/lib/prisma';
 
 interface GSPickingConfig {
   boxesPerPallet: number;
@@ -11,40 +10,42 @@ interface GSPickingConfig {
 }
 
 
-// GS 정산 데이터 저장 (JSON 파일)
+// GS 정산 데이터 저장
 export async function saveGSSettlements(data: any[]) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'gs_settlements.json');
-    let existingData: Record<string, any> = {};
+    const now = new Date();
+    
+    await prisma.$transaction(
+      data.map((item) => {
+        return prisma.gSSettlement.upsert({
+          where: {
+            GS_UNIQUE: {
+              date: item.date,
+              code: item.code
+            }
+          },
+          update: {
+            name: item.name,
+            qty: item.qty,
+            weight: item.weight,
+            amount: item.amount || 0,
+            remarks: item.remarks || '',
+            modDate: now
+          },
+          create: {
+            date: item.date,
+            code: item.code,
+            name: item.name,
+            qty: item.qty,
+            weight: item.weight,
+            amount: item.amount || 0,
+            remarks: item.remarks || '',
+            modDate: now
+          }
+        });
+      })
+    );
 
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      existingData = JSON.parse(fileContent);
-    } catch (error) {
-      // 파일이 없거나 비어있으면 초기화
-      existingData = {};
-    }
-
-    // 데이터 병합 (Upsert)
-    const now = new Date().toISOString();
-    data.forEach((item) => {
-      // 키 생성: 날짜_코드
-      const key = `${item.date}_${item.code}`;
-      
-      existingData[key] = {
-        date: item.date,
-        code: item.code,
-        name: item.name,
-        qty: item.qty,
-        weight: item.weight,
-        amount: item.amount || 0, // 정산 금액
-        remarks: item.remarks || '', // 비고
-        modDate: now,
-        isSaved: true
-      };
-    });
-
-    await fs.writeFile(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
     return { success: true };
   } catch (error) {
     console.error('Failed to save GS settlements:', error);
@@ -53,7 +54,7 @@ export async function saveGSSettlements(data: any[]) {
 }
 
 /**
- * GS 정산 요약 데이터 저장 (새로운 형태)
+ * GS 정산 요약 데이터 저장
  */
 export async function saveGSSummary(params: {
   startDate: string;
@@ -64,35 +65,37 @@ export async function saveGSSummary(params: {
     sunday: number;
     extraTrucks: number;
     totalAmount: number;
-    dates?: string[]; // 배송 발생한 전체 날짜 리스트 추가
+    dates?: string[];
   };
 }) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'gs_summaries.json');
-    let summaries: any[] = [];
+    await prisma.gSSummary.upsert({
+      where: {
+        GS_SUMMARY_UNIQUE: {
+          startDate: params.startDate,
+          endDate: params.endDate
+        }
+      },
+      update: {
+        weekday: params.summary.weekday,
+        saturday: params.summary.saturday,
+        sunday: params.summary.sunday,
+        extraTrucks: params.summary.extraTrucks,
+        totalAmount: params.summary.totalAmount,
+        dates: params.summary.dates || []
+      },
+      create: {
+        startDate: params.startDate,
+        endDate: params.endDate,
+        weekday: params.summary.weekday,
+        saturday: params.summary.saturday,
+        sunday: params.summary.sunday,
+        extraTrucks: params.summary.extraTrucks,
+        totalAmount: params.summary.totalAmount,
+        dates: params.summary.dates || []
+      }
+    });
 
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      summaries = JSON.parse(fileContent);
-    } catch (e) {}
-
-    const now = new Date().toISOString();
-    const newEntry = {
-      id: `gs_sum_${Date.now()}`,
-      ...params,
-      createdAt: now,
-      updatedAt: now
-    };
-
-    // 동일 기간 데이터가 있으면 덮어쓰기 로직 (선택 사항)
-    const existingIndex = summaries.findIndex(s => s.startDate === params.startDate && s.endDate === params.endDate);
-    if (existingIndex > -1) {
-      summaries[existingIndex] = newEntry;
-    } else {
-      summaries.push(newEntry);
-    }
-
-    await fs.writeFile(filePath, JSON.stringify(summaries, null, 2), 'utf-8');
     return { success: true };
   } catch (error) {
     console.error('Failed to save GS summary:', error);
@@ -110,35 +113,36 @@ export async function saveDailySummary(params: {
     placeName: string;
     deliveryDays: number;
     totalAmount: number;
-    deliveryDates?: string[]; // 해당 업체 배송일 리스트 추가
+    deliveryDates?: string[];
   }[];
 }) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'daily_summaries.json');
-    let summaries: any[] = [];
+    await prisma.$transaction(async (tx) => {
+      // 기존 요약 삭제 (Cascading으로 아이템도 삭제됨)
+      await tx.dailySummary.deleteMany({
+        where: { startDate: params.startDate, endDate: params.endDate }
+      });
 
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      summaries = JSON.parse(fileContent);
-    } catch (e) {}
+      // 새 요약 생성
+      const summary = await tx.dailySummary.create({
+        data: {
+          startDate: params.startDate,
+          endDate: params.endDate
+        }
+      });
 
-    const now = new Date().toISOString();
-    const newEntry = {
-      id: `daily_sum_${Date.now()}`,
-      ...params,
-      createdAt: now,
-      updatedAt: now
-    };
+      // 요약 아이템 생성
+      await tx.dailySummaryItem.createMany({
+        data: params.items.map(item => ({
+          summaryId: summary.id,
+          placeName: item.placeName,
+          deliveryDays: item.deliveryDays,
+          totalAmount: item.totalAmount,
+          deliveryDates: item.deliveryDates || []
+        }))
+      });
+    });
 
-    // 동일 기간 데이터가 있으면 덮어쓰기
-    const existingIndex = summaries.findIndex(s => s.startDate === params.startDate && s.endDate === params.endDate);
-    if (existingIndex > -1) {
-      summaries[existingIndex] = newEntry;
-    } else {
-      summaries.push(newEntry);
-    }
-
-    await fs.writeFile(filePath, JSON.stringify(summaries, null, 2), 'utf-8');
     return { success: true };
   } catch (error) {
     console.error('Failed to save daily summary:', error);
@@ -160,70 +164,38 @@ export async function getIntegratedBillingSummary(params: {
 
   try {
     // 1. 일일 출고 정산 요약 로드
-    let dailyRecords: any[] = [];
-    try {
-      const dailyPath = path.join(process.cwd(), 'data', 'daily_summaries.json');
-      const dailyContent = await fs.readFile(dailyPath, 'utf-8');
-      dailyRecords = JSON.parse(dailyContent);
-    } catch (e) {}
+    const dailySummary = await prisma.dailySummary.findFirst({
+      where: { startDate, endDate },
+      include: { items: true }
+    });
 
     // 2. GS 출고 정산 요약 로드
-    let gsRecords: any[] = [];
-    try {
-      const gsPath = path.join(process.cwd(), 'data', 'gs_summaries.json');
-      const gsContent = await fs.readFile(gsPath, 'utf-8');
-      gsRecords = JSON.parse(gsContent);
-    } catch (e) {}
+    const gsSummary = await prisma.gSSummary.findFirst({
+      where: { startDate, endDate }
+    });
 
     // 3. 긴급 출고 정산 요약 로드
-    let emergencyRecords: any[] = [];
-    try {
-      const emergencyPath = path.join(process.cwd(), 'data', 'emergency_settlements.json');
-      const emergencyContent = await fs.readFile(emergencyPath, 'utf-8');
-      emergencyRecords = JSON.parse(emergencyContent);
-    } catch (e) {}
+    const emergencySettlements = await prisma.emergencySettlement.findMany({
+      where: { startDate, endDate }
+    });
 
-    // 4. 청구 조회 정산 요약 로드 (추가)
-    let inquiryRecords: any[] = [];
-    try {
-      const inquiryPath = path.join(process.cwd(), 'data', 'inquiry_settlements.json');
-      const inquiryContent = await fs.readFile(inquiryPath, 'utf-8');
-      inquiryRecords = JSON.parse(inquiryContent);
-    } catch (e) {}
+    // 4. 청구 조회 정산 요약 로드
+    const inquirySettlements = await prisma.inquirySettlement.findMany({
+      where: { startDate: startNum.toString(), endDate: endNum.toString() } // normalizeDateStr 형식에 맞춤
+    });
 
-    // 5. 고정 비용 로드 (추가)
-    let fixedRecords: any[] = [];
-    try {
-      const fixedPath = path.join(process.cwd(), 'data', 'fixed_settlements.json');
-      const fixedContent = await fs.readFile(fixedPath, 'utf-8');
-      fixedRecords = JSON.parse(fixedContent);
-    } catch (e) {}
+    // 5. 고정 비용 로드
+    const fixedSettlements = await prisma.fixedSettlement.findMany();
 
     // 6. 청구처 매핑을 위해 청구 비용 관리 데이터 로드
-    let billingItems: any[] = [];
-    try {
-      const billingPath = path.join(process.cwd(), 'data', 'billing.json');
-      const billingContent = await fs.readFile(billingPath, 'utf-8');
-      billingItems = JSON.parse(billingContent).items || [];
-    } catch (e) {}
-
-    const isWithinPeriod = (sDate: string, eDate: string) => {
-      const s = Number(sDate.replace(/[^0-9]/g, ''));
-      const e = Number(eDate.replace(/[^0-9]/g, ''));
-      return s === startNum && e === endNum;
-    };
-
-    const filteredDaily = dailyRecords.filter(r => isWithinPeriod(r.startDate, r.endDate));
-    const filteredGS = gsRecords.filter(r => isWithinPeriod(r.startDate, r.endDate));
-    const filteredEmergency = emergencyRecords.filter(r => isWithinPeriod(r.startDate, r.endDate));
-    const filteredInquiry = inquiryRecords.filter(r => isWithinPeriod(r.startDate, r.endDate));
+    const billingItems = await prisma.billingItem.findMany();
 
     // 일일 출고 항목에 청구처 정보 매핑
-    const dailyWithBilling = (filteredDaily.length > 0 ? (filteredDaily[0].items || []) : []).map((item: any) => {
+    const dailyWithBilling = (dailySummary?.items || []).map((item: any) => {
       const billingInfo = billingItems.find(bi => bi.name === item.placeName);
       return {
         ...item,
-        billingRecipient: billingInfo?.billingRecipient || '본사청구' // 기본값
+        billingRecipient: billingInfo?.billingRecipient || '본사청구'
       };
     });
 
@@ -231,10 +203,10 @@ export async function getIntegratedBillingSummary(params: {
       success: true,
       data: {
         daily: dailyWithBilling,
-        gs: filteredGS.length > 0 ? filteredGS[0] : null,
-        emergency: filteredEmergency.length > 0 ? filteredEmergency : [],
-        inquiry: filteredInquiry, // 개별 항목 리스트
-        fixed: fixedRecords // 고정 비용은 기간 상관없이 모두 표시
+        gs: gsSummary,
+        emergency: emergencySettlements,
+        inquiry: inquirySettlements,
+        fixed: fixedSettlements
       }
     };
   } catch (error) {
@@ -258,15 +230,14 @@ export async function getDailySettlements(params: {
 
   try {
     // 0. 저장된 데이터 가져오기 (GS 관련 타입인 경우)
-    let savedGSData: Record<string, any> = {};
+    let savedGSDataMap = new Map<string, any>();
     if (isGSType) {
-      try {
-        const filePath = path.join(process.cwd(), 'data', 'gs_settlements.json');
-        const fileContent = await fs.readFile(filePath, 'utf-8');
-        savedGSData = JSON.parse(fileContent);
-      } catch (e) {
-        // console.warn('No saved data or file error:', e);
-      }
+      const savedGS = await prisma.gSSettlement.findMany({
+        where: { date: { gte: startDate, lte: endDate } }
+      });
+      savedGS.forEach(item => {
+        savedGSDataMap.set(`${item.date}_${item.code}`, item);
+      });
     }
 
     // MySQL 직접 연결 (Prisma의 인코딩 문제 회피)
@@ -297,25 +268,17 @@ export async function getDailySettlements(params: {
       // [중요] 자동 정산 필터링 (WhiteList) 및 마스터 명칭 맵 생성
       let searchTerms: string[] = [];
       let criteria: 'name' | 'code' = (type === 'gs' || type === 'gs-picking') ? 'code' : 'name';
+      
+      // 2. [수정] 마스터 명칭 맵 구성을 위해 청구 비용 데이터 로드 (DB에서)
+      const billingItems = await prisma.billingItem.findMany();
       const masterNames: Record<string, string> = {};
 
-      // 청구 비용 데이터 로드
-      let billingItems: any[] = [];
-      try {
-        const filePath = path.join(process.cwd(), 'data', 'billing.json');
-        const fileContent = await fs.readFile(filePath, 'utf-8');
-        const billingData = JSON.parse(fileContent);
-        billingItems = billingData.items;
-
-        // 마스터 명칭 맵 구성 (코드 -> 이름)
-        billingItems.forEach((item: any) => {
-          if (item.code) {
-            masterNames[String(item.code).trim()] = item.name;
-          }
-        });
-      } catch (err) {
-        console.warn('Billing data not found or error reading:', err);
-      }
+      // 마스터 명칭 맵 구성 (코드 -> 이름)
+      billingItems.forEach((item: any) => {
+        if (item.code) {
+          masterNames[String(item.code).trim()] = item.name;
+        }
+      });
 
       if (searchTerm) {
         searchTerms = searchTerm.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
@@ -360,7 +323,7 @@ export async function getDailySettlements(params: {
         const compareValue = isGSType ? code : name;
 
         if (searchTerms.length > 0) {
-          matches = searchTerms.some(term => {
+          matches = searchTerms.some((term: string) => {
             const t = term.trim();
             return isGSType ? code === t : compareValue.includes(t);
           });
@@ -393,24 +356,26 @@ export async function getDailySettlements(params: {
       if (isGSType) {
         // 1. 기존 그룹화 데이터 업데이트
         Object.keys(groupedRows).forEach(key => {
-          if (savedGSData[key]) {
+          const saved = savedGSDataMap.get(key);
+          if (saved) {
             groupedRows[key] = {
               ...groupedRows[key],
-              ...savedGSData[key],
+              ...saved,
+              qty: Number(saved.qty),
+              weight: Number(saved.weight),
               isSaved: true
             };
           }
         });
         
         // 2. DB에는 없으나 저장된 데이터에만 있는 항목 추가 (기간 내)
-        Object.keys(savedGSData).forEach(key => {
-          const item = savedGSData[key];
-          if (!groupedRows[key] && item.date >= startDate && item.date <= endDate) {
+        savedGSDataMap.forEach((item, key) => {
+          if (!groupedRows[key]) {
             // 검색어 필터링 적용
             const compareValue = isGSType ? item.code : item.name;
             let matches = false;
             if (searchTerms.length > 0) {
-              matches = searchTerms.some(term => {
+              matches = searchTerms.some((term: string) => {
                 const t = term.trim();
                 return isGSType ? item.code === t : String(compareValue).includes(t);
               });
@@ -419,7 +384,12 @@ export async function getDailySettlements(params: {
             }
 
             if (matches) {
-              groupedRows[key] = { ...item, isSaved: true };
+              groupedRows[key] = { 
+                ...item, 
+                qty: Number(item.qty),
+                weight: Number(item.weight),
+                isSaved: true 
+              };
             }
           }
         });
@@ -443,12 +413,10 @@ export async function getDailySettlements(params: {
       // [저장 상태 확인] 일일 출고 정산(daily)인 경우 daily_summaries.json 확인
       let isSaved = false;
       if (type === 'daily') {
-        try {
-          const filePath = path.join(process.cwd(), 'data', 'daily_summaries.json');
-          const fileContent = await fs.readFile(filePath, 'utf-8');
-          const summaries = JSON.parse(fileContent);
-          isSaved = summaries.some((s: any) => s.startDate === startDate && s.endDate === endDate);
-        } catch (e) {}
+        const summary = await prisma.dailySummary.findFirst({
+          where: { startDate, endDate }
+        });
+        isSaved = !!summary;
       } else if (isGSType) {
         isSaved = result.some((r: any) => r.isSaved);
       }
@@ -468,23 +436,22 @@ export async function getDailySettlements(params: {
  */
 export async function getGSPickingConfig(): Promise<{ success: boolean; data: GSPickingConfig }> {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'config.json');
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      const config = JSON.parse(fileContent);
+    const config = await prisma.config.findUnique({
+      where: { key: 'gsPicking' }
+    });
+    
+    if (config && config.data) {
+      const data = config.data as any;
       return { 
         success: true, 
         data: {
-          boxesPerPallet: config.gsPicking?.boxesPerPallet ?? 78,
-          ratePerPallet: config.gsPicking?.ratePerPallet ?? 8000
+          boxesPerPallet: data.boxesPerPallet ?? 78,
+          ratePerPallet: data.ratePerPallet ?? 8000
         }
       };
-    } catch (e) {
-      return { 
-        success: true, 
-        data: { boxesPerPallet: 78, ratePerPallet: 8000 } 
-      };
     }
+    
+    return { success: true, data: { boxesPerPallet: 78, ratePerPallet: 8000 } };
   } catch (error) {
     console.error('Failed to get GS picking config:', error);
     return { success: false, data: { boxesPerPallet: 78, ratePerPallet: 8000 } };
@@ -496,21 +463,24 @@ export async function getGSPickingConfig(): Promise<{ success: boolean; data: GS
  */
 export async function updateGSPickingConfig(params: GSPickingConfig) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'config.json');
-    let config: any = {};
-    
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      config = JSON.parse(fileContent);
-    } catch (e) {}
-
-    config.gsPicking = {
-      boxesPerPallet: params.boxesPerPallet,
-      ratePerPallet: params.ratePerPallet,
-      updatedAt: new Date().toISOString()
-    };
-
-    await fs.writeFile(filePath, JSON.stringify(config, null, 2), 'utf-8');
+    await prisma.config.upsert({
+      where: { key: 'gsPicking' },
+      update: {
+        data: {
+          boxesPerPallet: params.boxesPerPallet,
+          ratePerPallet: params.ratePerPallet,
+          updatedAt: new Date().toISOString()
+        } as any
+      },
+      create: {
+        key: 'gsPicking',
+        data: {
+          boxesPerPallet: params.boxesPerPallet,
+          ratePerPallet: params.ratePerPallet,
+          updatedAt: new Date().toISOString()
+        } as any
+      }
+    });
     return { success: true };
   } catch (error) {
     console.error('Failed to update GS picking config:', error);

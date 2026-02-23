@@ -1,26 +1,24 @@
 'use server';
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import mysql from 'mysql2/promise';
 import iconv from 'iconv-lite';
 import { revalidatePath } from 'next/cache';
-import crypto from 'crypto';
+import prisma from '@/lib/prisma';
 
 // 날짜 정규화 유틸리티 (비교용)
 const normalizeDateStr = (date: any) => {
   return String(date || '').trim().replace(/[^0-9]/g, ''); // 숫자만 추출 (2026-02-01 -> 20260201)
 };
 
-// 데이터 파일 경로
-const DATA_FILE_PATH = path.join(process.cwd(), 'data', 'billing.json');
+// 데이터 파일 경로 제거 (DB 사용)
+// const DATA_FILE_PATH = path.join(process.cwd(), 'data', 'billing.json');
 
-// 타입 정의
+// 타입 정의 (Prisma 모델과 호환되도록 유지)
 export interface BillingRate {
   id: string;
   itemId: string;
   validFrom: string; // YYYY-MM-DD
-  validTo: string | null; // YYYY-MM-DD or null (null이면 현재 유효)
+  validTo: string | null; // YYYY-MM-DD or null
   amount: number;
   note: string;
   createdAt: string;
@@ -30,55 +28,43 @@ export interface BillingItem {
   id: string;
   code: string;
   name: string;
-  billingRecipient: string; // 비용청구처 추가
-  type: string; // '기본운임', '기타' 등
-  mergeCriteria: 'code' | 'name'; // 정산 기준 다시 복원
+  billingRecipient: string;
+  type: string;
+  mergeCriteria: 'code' | 'name';
   note: string;
   rates: BillingRate[];
   createdAt: string;
   updatedAt: string;
 }
 
-interface BillingData {
-  version: string;
-  items: BillingItem[];
-}
-
-// 헬퍼: 데이터 파일 읽기
-async function readData(): Promise<BillingData> {
-  try {
-    const data = await fs.readFile(DATA_FILE_PATH, 'utf-8');
-    return JSON.parse(data);
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      // 파일 없으면 초기 데이터 생성 및 디렉토리 생성
-      const initialData: BillingData = { version: '1.0', items: [] };
-      await writeData(initialData);
-      return initialData;
-    }
-    throw error;
-  }
-}
-
-// 헬퍼: 데이터 파일 쓰기
-async function writeData(data: BillingData): Promise<void> {
-  const dirPath = path.dirname(DATA_FILE_PATH);
-  
-  try {
-    await fs.mkdir(dirPath, { recursive: true });
-  } catch (err: any) {
-    if (err.code !== 'EEXIST') throw err;
-  }
-  
-  await fs.writeFile(DATA_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
-}
+// 헬퍼 제거
 
 /**
  * 모든 청구 항목 조회 (현재 유효한 단가 포함)
  */
 export async function getBillingItems() {
-  const data = await readData();
-  return { success: true, data: data.items };
+  const items = await prisma.billingItem.findMany({
+    include: {
+      rates: {
+        orderBy: { createdAt: 'asc' }
+      }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+  
+  // 타입을 UI와 맞추기 위해 변환
+  const formattedItems: BillingItem[] = items.map(item => ({
+    ...item,
+    mergeCriteria: item.mergeCriteria as 'code' | 'name',
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+    rates: item.rates.map(rate => ({
+      ...rate,
+      createdAt: rate.createdAt.toISOString()
+    }))
+  }));
+
+  return { success: true, data: formattedItems };
 }
 
 /**
@@ -93,58 +79,57 @@ export async function addBillingItem(params: {
   note: string;
   mergeCriteria: 'code' | 'name';
 }) {
-  const data = await readData();
-  
-  // 필수값 검증 제거: 사용자가 "아무거나 하나만 입력하면 된다"고 했으므로 
-  // 최소한의 데이터(식별 가능한 정보)가 하나라도 있는지 체크할 수도 있지만,
-  // "필수 이런 건 없어"라는 말에 따라 강제 리턴하지 않음.
-  // 다만 중복 체크를 위해 값이 있는 경우에만 검사.
-
-  // 중복 체크: (값이 있는 경우에만)
+  // 중복 체크
   if (params.code) {
-    const existingIndex = data.items.findIndex(item => item.code === params.code && item.code !== '');
-    if (existingIndex !== -1) {
-       // 경고는 주되, 저장을 막아야 할까? 중복이면 곤란하므로 막는 게 맞음.
-       return { success: false, error: '이미 존재하는 납품처 코드입니다.' };
-    }
+    const existing = await prisma.billingItem.findFirst({
+      where: { code: params.code, NOT: { code: '' } }
+    });
+    if (existing) return { success: false, error: '이미 존재하는 납품처 코드입니다.' };
   }
   if (params.name) {
-    const existingIndex = data.items.findIndex(item => item.name === params.name && item.name !== '');
-    if (existingIndex !== -1) {
-       return { success: false, error: '이미 존재하는 납품처명입니다.' };
-    }
+    const existing = await prisma.billingItem.findFirst({
+      where: { name: params.name }
+    });
+    if (existing) return { success: false, error: '이미 존재하는 납품처명입니다.' };
   }
 
-  const newItemId = crypto.randomUUID();
-  const now = new Date().toISOString();
+  const result = await prisma.$transaction(async (tx) => {
+    const newItem = await tx.billingItem.create({
+      data: {
+        code: params.code || '',
+        name: params.name || '',
+        billingRecipient: params.billingRecipient || '',
+        mergeCriteria: params.mergeCriteria || 'name',
+        note: params.note || '',
+      }
+    });
 
-  const newRate: BillingRate = {
-    id: crypto.randomUUID(),
-    itemId: newItemId,
-    validFrom: params.validFrom || now.split('T')[0], // 시작일 없으면 오늘
-    validTo: null,
-    amount: params.amount || 0,
-    note: '최초 등록',
-    createdAt: now,
+    await tx.billingRate.create({
+      data: {
+        itemId: newItem.id,
+        validFrom: params.validFrom || new Date().toISOString().split('T')[0],
+        amount: params.amount || 0,
+        note: '최초 등록',
+      }
+    });
+
+    return await tx.billingItem.findUnique({
+      where: { id: newItem.id },
+      include: { rates: true }
+    });
+  });
+
+  if (!result) return { success: false, error: '등록 실패' };
+
+  const formatted: BillingItem = {
+    ...result,
+    mergeCriteria: result.mergeCriteria as 'code' | 'name',
+    createdAt: result.createdAt.toISOString(),
+    updatedAt: result.updatedAt.toISOString(),
+    rates: result.rates.map((r: any) => ({ ...r, createdAt: r.createdAt.toISOString() }))
   };
 
-  const newItem: BillingItem = {
-    id: newItemId,
-    code: params.code || '',
-    name: params.name || '',
-    billingRecipient: params.billingRecipient || '',
-    type: '기본운임',
-    mergeCriteria: params.mergeCriteria || 'name', // 기본값 name
-    note: params.note || '',
-    rates: [newRate],
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  data.items.push(newItem);
-  await writeData(data);
-
-  return { success: true, data: newItem };
+  return { success: true, data: formatted };
 }
 
 /**
@@ -153,54 +138,53 @@ export async function addBillingItem(params: {
 export async function updateBillingRate(params: {
   itemId: string;
   newAmount: number;
-  validFrom: string; // 변경 시작일 (YYYY-MM-DD)
+  validFrom: string;
   note: string;
 }) {
-  const data = await readData();
-  const itemIndex = data.items.findIndex(item => item.id === params.itemId);
-  
-  if (itemIndex === -1) {
-    return { success: false, error: '청구 항목을 찾을 수 없습니다.' };
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    // 현재 유효한 단가 찾기
+    const currentRate = await tx.billingRate.findFirst({
+      where: { itemId: params.itemId, validTo: null }
+    });
 
-  const item = data.items[itemIndex];
-  
-  // 현재 유효한(validTo가 null인) 마지막 이력을 찾아서 종료일 업데이트
-  // [중요] 변경 시작일의 *하루 전날*을 종료일로 설정
-  // 예: 2026-01-01부터 변경 -> 기존 이력은 2025-12-31까지 유효
-  const currentRateIndex = item.rates.findIndex(r => r.validTo === null);
-  
-  if (currentRateIndex !== -1) {
-    const validFromDate = new Date(params.validFrom);
-    const validToDate = new Date(validFromDate);
-    validToDate.setDate(validToDate.getDate() - 1); // 하루 전
-    
-    // YYYY-MM-DD 포맷
-    const validToStr = validToDate.toISOString().split('T')[0];
-    
-    // 기존 이력 종료
-    item.rates[currentRateIndex].validTo = validToStr;
-  }
+    if (currentRate) {
+      const validFromDate = new Date(params.validFrom);
+      const validToDate = new Date(validFromDate);
+      validToDate.setDate(validToDate.getDate() - 1);
+      const validToStr = validToDate.toISOString().split('T')[0];
 
-  // 새 이력 추가
-  const newRate: BillingRate = {
-    id: crypto.randomUUID(),
-    itemId: item.id,
-    validFrom: params.validFrom,
-    validTo: null,
-    amount: params.newAmount,
-    note: params.note,
-    createdAt: new Date().toISOString(),
+      await tx.billingRate.update({
+        where: { id: currentRate.id },
+        data: { validTo: validToStr }
+      });
+    }
+
+    await tx.billingRate.create({
+      data: {
+        itemId: params.itemId,
+        validFrom: params.validFrom,
+        amount: params.newAmount,
+        note: params.note,
+      }
+    });
+
+    return await tx.billingItem.findUnique({
+      where: { id: params.itemId },
+      include: { rates: true }
+    });
+  });
+
+  if (!result) return { success: false, error: '항목을 찾을 수 없습니다.' };
+
+  const formatted: BillingItem = {
+    ...result,
+    mergeCriteria: result.mergeCriteria as 'code' | 'name',
+    createdAt: result.createdAt.toISOString(),
+    updatedAt: result.updatedAt.toISOString(),
+    rates: result.rates.map((r: any) => ({ ...r, createdAt: r.createdAt.toISOString() }))
   };
 
-  item.rates.push(newRate);
-  item.updatedAt = new Date().toISOString();
-  
-  // 데이터 업데이트
-  data.items[itemIndex] = item;
-  await writeData(data);
-
-  return { success: true, data: item };
+  return { success: true, data: formatted };
 }
 
 /**
@@ -213,43 +197,41 @@ export async function updateBillingItemInfo(params: {
   billingRecipient?: string;
   note?: string;
 }) {
-  const data = await readData();
-  const itemIndex = data.items.findIndex(item => item.id === params.id);
-  
-  if (itemIndex === -1) {
-    return { success: false, error: '항목을 찾을 수 없습니다.' };
-  }
+  const updated = await prisma.billingItem.update({
+    where: { id: params.id },
+    data: {
+      code: params.code,
+      name: params.name,
+      billingRecipient: params.billingRecipient,
+      note: params.note
+    },
+    include: { rates: true }
+  });
 
-  const item = data.items[itemIndex];
-  if (params.code !== undefined) item.code = params.code; // 빈 문자열도 허용하므로 undefined 체크
-  if (params.name !== undefined) item.name = params.name;
-  if (params.billingRecipient !== undefined) item.billingRecipient = params.billingRecipient;
-  if (params.note !== undefined) item.note = params.note;
-  item.updatedAt = new Date().toISOString();
+  const formatted: BillingItem = {
+    ...updated,
+    mergeCriteria: updated.mergeCriteria as 'code' | 'name',
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
+    rates: updated.rates.map(r => ({ ...r, createdAt: r.createdAt.toISOString() }))
+  };
 
-  data.items[itemIndex] = item;
-  await writeData(data);
-
-  return { success: true, data: item };
+  return { success: true, data: formatted };
 }
 
 /**
  * 청구 항목 삭제
  */
 export async function deleteBillingItem(id: string) {
-  const data = await readData();
-  const initialLength = data.items.length;
-  
-  // 해당 ID를 가진 항목 제외
-  const newItems = data.items.filter(item => item.id !== id);
-
-  if (newItems.length === initialLength) {
-    return { success: false, error: '삭제할 항목이 없습니다.' };
+  try {
+    await prisma.billingItem.delete({
+      where: { id }
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to delete billing item:', error);
+    return { success: false, error: '삭제 요청 처리 중 오류가 발생했습니다.' };
   }
-  
-  data.items = newItems;
-  await writeData(data);
-  return { success: true };
 }
 
 /**
@@ -265,50 +247,57 @@ export async function updateBillingItemDirectly(params: {
   note: string;
   mergeCriteria: 'code' | 'name';
 }) {
-  const data = await readData();
-  const itemIndex = data.items.findIndex(item => item.id === params.id);
-  
-  if (itemIndex === -1) {
-    return { success: false, error: '항목을 찾을 수 없습니다.' };
-  }
-
-  const item = data.items[itemIndex];
-  
   // 이름 수정 시 중복 체크 (본인 제외)
-  if (params.name !== item.name) {
-      const existingIndex = data.items.findIndex(i => i.name === params.name && i.id !== params.id);
-      if (existingIndex !== -1) {
-          return { success: false, error: '이미 존재하는 납품처명입니다.' };
+  const existing = await prisma.billingItem.findFirst({
+    where: { name: params.name, NOT: { id: params.id } }
+  });
+  if (existing) return { success: false, error: '이미 존재하는 납품처명입니다.' };
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedItem = await tx.billingItem.update({
+      where: { id: params.id },
+      data: {
+        code: params.code || '',
+        name: params.name,
+        billingRecipient: params.billingRecipient || '',
+        note: params.note || '',
+        mergeCriteria: params.mergeCriteria,
       }
-  }
+    });
 
-  // 1. 기본 정보 수정
-  item.code = params.code || '';
-  item.name = params.name; // 필수
-  item.billingRecipient = params.billingRecipient || '';
-  item.note = params.note || '';
-  item.mergeCriteria = params.mergeCriteria;
-  
-  // 2. 현재 유효한(혹은 마지막) 단가 정보 수정
-  // [주의] 이력을 새로 쌓는게 아니라, 기존 값을 덮어씀
-  const currentRateIndex = item.rates.findIndex(r => r.validTo === null) !== -1
-    ? item.rates.findIndex(r => r.validTo === null)
-    : item.rates.length - 1;
+    // 마지막 단가 정보 수정
+    const lastRate = await tx.billingRate.findFirst({
+      where: { itemId: params.id },
+      orderBy: { createdAt: 'desc' }
+    });
 
-  if (currentRateIndex !== -1) {
-    item.rates[currentRateIndex].amount = params.amount || 0;
-    if (params.validFrom) {
-       item.rates[currentRateIndex].validFrom = params.validFrom;
+    if (lastRate) {
+      await tx.billingRate.update({
+        where: { id: lastRate.id },
+        data: {
+          amount: params.amount || 0,
+          validFrom: params.validFrom || lastRate.validFrom
+        }
+      });
     }
-    // note, validTo 등은 건드리지 않음 (필요 시 수정 가능)
-  }
 
-  item.updatedAt = new Date().toISOString();
-  
-  data.items[itemIndex] = item;
-  await writeData(data);
+    return await tx.billingItem.findUnique({
+      where: { id: params.id },
+      include: { rates: true }
+    });
+  });
 
-  return { success: true, data: item };
+  if (!result) return { success: false, error: '항목을 찾을 수 없습니다.' };
+
+  const formatted: BillingItem = {
+    ...result,
+    mergeCriteria: result.mergeCriteria as 'code' | 'name',
+    createdAt: result.createdAt.toISOString(),
+    updatedAt: result.updatedAt.toISOString(),
+    rates: result.rates.map((r: any) => ({ ...r, createdAt: r.createdAt.toISOString() }))
+  };
+
+  return { success: true, data: formatted };
 }
 
 /**
@@ -334,18 +323,17 @@ export async function getInquiryBilling(params: {
       // 개별 행의 저장 및 매칭을 위한 저장된 데이터 로드
       let savedItemsMap = new Map<string, string>(); // key -> id
       try {
-        const filePath = path.join(process.cwd(), 'data', 'inquiry_settlements.json');
-        const fileContent = await fs.readFile(filePath, 'utf-8');
-        const settlements: any[] = JSON.parse(fileContent);
         const targetStart = normalizeDateStr(startDate);
         const targetEnd = normalizeDateStr(endDate);
         
-        settlements
-          .filter(s => normalizeDateStr(s.startDate) === targetStart && normalizeDateStr(s.endDate) === targetEnd)
-          .forEach(s => {
-            const key = `${s.date}_${s.name}_${s.so}_${s.nap}_${s.kum}`;
-            savedItemsMap.set(key, s.id);
-          });
+        const savedSettlements = await prisma.inquirySettlement.findMany({
+          where: { startDate: targetStart, endDate: targetEnd }
+        });
+
+        savedSettlements.forEach(s => {
+          const key = `${s.date}_${s.name}_${s.so}_${s.nap}_${s.kum}`;
+          savedItemsMap.set(key, s.id);
+        });
       } catch (e) {}
 
       const decode = (val: any) => {
@@ -415,15 +403,12 @@ export async function getInquiryBilling(params: {
  */
 async function checkInquirySaved(startDate: string, endDate: string) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'inquiry_settlements.json');
-    const fileContent = await fs.readFile(filePath, 'utf-8');
-    const settlements: any[] = JSON.parse(fileContent);
     const targetStart = normalizeDateStr(startDate);
     const targetEnd = normalizeDateStr(endDate);
-    return settlements.some(s => 
-      normalizeDateStr(s.startDate) === targetStart && 
-      normalizeDateStr(s.endDate) === targetEnd
-    );
+    const count = await prisma.inquirySettlement.count({
+      where: { startDate: targetStart, endDate: targetEnd }
+    });
+    return count > 0;
   } catch (e) {
     return false;
   }
@@ -449,41 +434,47 @@ export async function saveInquirySettlements(params: {
   }>
 }) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'inquiry_settlements.json');
-    let existingData: any[] = [];
-    
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      existingData = JSON.parse(fileContent);
-    } catch (e) {}
-
     if (!params.records || params.records.length === 0) {
       return { success: false, error: '저장할 레코드가 없습니다.' };
     }
-
-    const now = new Date().toISOString();
-    const newRecords = params.records.map(record => ({
-      ...record,
-      id: crypto.randomUUID(),
-      createdAt: now
-    }));
 
     const targetStart = normalizeDateStr(params.records[0].startDate);
     const targetEnd = normalizeDateStr(params.records[0].endDate);
     
     // 증분 저장 로직: 저장하려는 항목들과 키가 겹치는 기존 레코드만 지움
-    const newKeys = new Set(params.records.map(r => `${r.date}_${r.name}_${r.so}_${r.nap}_${r.kum}`));
-    
-    const cleanedData = existingData.filter((r: any) => {
-      // 다른 기간의 데이터는 유지
-      if (normalizeDateStr(r.startDate) !== targetStart || normalizeDateStr(r.endDate) !== targetEnd) return true;
-      // 같은 기간이지만 이번에 저장하지 않는 항목(키가 다른 항목)은 유지
-      const key = `${r.date}_${r.name}_${r.so}_${r.nap}_${r.kum}`;
-      return !newKeys.has(key);
-    });
+    const newKeys = params.records.map((r: any) => ({
+      date: r.date,
+      name: r.name,
+      so: r.so,
+      nap: r.nap,
+      kum: r.kum
+    }));
 
-    const updatedData = [...cleanedData, ...newRecords];
-    await fs.writeFile(filePath, JSON.stringify(updatedData, null, 2), 'utf-8');
+    await prisma.$transaction(async (tx) => {
+      // 겹치는 항목 삭제
+      for (const k of newKeys) {
+        await tx.inquirySettlement.deleteMany({
+          where: {
+            startDate: targetStart,
+            endDate: targetEnd,
+            date: k.date,
+            name: k.name,
+            so: k.so,
+            nap: k.nap,
+            kum: k.kum
+          }
+        });
+      }
+
+      // 새 항목 추가
+      await tx.inquirySettlement.createMany({
+        data: params.records.map(r => ({
+          ...r,
+          startDate: targetStart,
+          endDate: targetEnd
+        }))
+      });
+    });
 
     revalidatePath('/billing/inquiry');
     return { success: true };
@@ -499,33 +490,21 @@ export async function saveInquirySettlements(params: {
 export async function deleteInquirySettlements(params: {
   startDate: string;
   endDate: string;
-  ids?: string[]; // 저장된 레코드의 ID 목록 (있으면 해당 항목만, 없으면 전체 기간 삭제)
+  ids?: string[];
 }) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'inquiry_settlements.json');
-    let existingData: any[] = [];
-    
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      existingData = JSON.parse(fileContent);
-    } catch (e) {
-      return { success: true };
-    }
-
     const targetStart = normalizeDateStr(params.startDate);
     const targetEnd = normalizeDateStr(params.endDate);
 
-    const isTarget = (r: any) => {
-      const dateMatch = normalizeDateStr(r.startDate) === targetStart && normalizeDateStr(r.endDate) === targetEnd;
-      if (!dateMatch) return false;
-      if (params.ids && params.ids.length > 0) {
-        return params.ids.includes(r.id);
-      }
-      return true;
-    };
-
-    const updatedData = existingData.filter(r => !isTarget(r));
-    await fs.writeFile(filePath, JSON.stringify(updatedData, null, 2), 'utf-8');
+    if (params.ids && params.ids.length > 0) {
+      await prisma.inquirySettlement.deleteMany({
+        where: { id: { in: params.ids } }
+      });
+    } else {
+      await prisma.inquirySettlement.deleteMany({
+        where: { startDate: targetStart, endDate: targetEnd }
+      });
+    }
 
     revalidatePath('/billing/inquiry');
     return { success: true };
@@ -540,9 +519,11 @@ export async function deleteInquirySettlements(params: {
  */
 async function getEmergencyRates(): Promise<Record<string, number>> {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'emergency_rates.json');
-    const fileContent = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(fileContent);
+    const rates = await prisma.emergencyRate.findMany();
+    return rates.reduce((acc, r) => {
+      acc[r.name] = r.rate;
+      return acc;
+    }, {} as Record<string, number>);
   } catch (e) {
     return {};
   }
@@ -553,10 +534,11 @@ async function getEmergencyRates(): Promise<Record<string, number>> {
  */
 export async function updateEmergencyRate(name: string, rate: number) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'emergency_rates.json');
-    const rates = await getEmergencyRates();
-    rates[name] = rate;
-    await fs.writeFile(filePath, JSON.stringify(rates, null, 2), 'utf-8');
+    await prisma.emergencyRate.upsert({
+      where: { name },
+      update: { rate },
+      create: { name, rate }
+    });
     return { success: true };
   } catch (error) {
     console.error('Failed to update emergency rate:', error);
@@ -646,16 +628,12 @@ export async function getEmergencyShipments(params: {
       // 정산 데이터 저장 여부 확인
       let isSaved = false;
       try {
-        const settlementPath = path.join(process.cwd(), 'data', 'emergency_settlements.json');
-        const settlementContent = await fs.readFile(settlementPath, 'utf-8');
-        const settlements: any[] = JSON.parse(settlementContent);
-        // 요청된 기간(startDate, endDate)과 정확히 일치하는 기록이 하나라도 있으면 저장된 것으로 간주
         const targetStart = normalizeDateStr(startDate);
         const targetEnd = normalizeDateStr(endDate);
-        isSaved = settlements.some(s => 
-          normalizeDateStr(s.startDate) === targetStart && 
-          normalizeDateStr(s.endDate) === targetEnd
-        );
+        const count = await prisma.emergencySettlement.count({
+          where: { startDate: targetStart, endDate: targetEnd }
+        });
+        isSaved = count > 0;
       } catch (e) {
         isSaved = false;
       }
@@ -694,15 +672,10 @@ export async function getMonthlyBillingSummary(params: {
         [startDate, endDate]
       );
 
-      // 2. 청구 단가 데이터 로드
-      let billingData: any = { items: [] };
-      try {
-        const filePath = path.join(process.cwd(), 'data', 'billing.json');
-        const fileContent = await fs.readFile(filePath, 'utf-8');
-        billingData = JSON.parse(fileContent);
-      } catch (err) {
-        console.warn('Billing data not found:', err);
-      }
+      // 2. 청구 단가 데이터 로드 (DB에서)
+      const billingItems = await prisma.billingItem.findMany({
+        include: { rates: true }
+      });
 
       const decode = (val: any) => {
         if (!val) return '';
@@ -719,8 +692,8 @@ export async function getMonthlyBillingSummary(params: {
         const code = String(row.B_C_CODE || '').trim();
         const name = decode(row.B_C_NAME);
         
-        // billing.json에서 해당 업체 설정 찾기
-        const billingItem = billingData.items.find((item: any) => {
+        // DB에서 해당 업체 설정 찾기
+        const billingItem = billingItems.find((item: any) => {
           if (item.mergeCriteria === 'code') return item.code === code;
           return item.name === name;
         });
@@ -747,13 +720,10 @@ export async function getMonthlyBillingSummary(params: {
 
       // 4. 금액 계산
       const result = Object.values(summary).map((item: any) => {
-        const billingItem = billingData.items.find((bi: any) => {
-          if (bi.mergeCriteria === 'code' && bi.name === item.name) return true;
-          return bi.name === item.name;
-        });
+        const billingItem = billingItems.find((bi: any) => bi.name === item.name);
 
         const count = item.days.size;
-        const rate = billingItem?.rates?.[0]?.amount || 0;
+        const rate = billingItem?.rates?.find((r: any) => r.validTo === null)?.amount || 0;
         let cost = count * rate;
 
         // [특수 로직] GS 정산 가산금 (12+3 등)
@@ -799,55 +769,45 @@ export async function saveEmergencySettlements(params: {
     rate: number;
     total: number;
     memo?: string;
-    dates?: string[]; // 배송일 리스트 원본 추가
+    dates?: string[];
   }>
 }) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'emergency_settlements.json');
-    let existingData: any[] = [];
-    
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      existingData = JSON.parse(fileContent);
-    } catch (e) {
-      // 파일이 없으면 빈 배열로 시작
-    }
-
     if (!params.records || params.records.length === 0) {
       return { success: false, error: '저장할 레코드가 없습니다.' };
     }
 
-    const now = new Date().toISOString();
-    const newRecords = params.records.map(record => ({
-      ...record,
-      id: crypto.randomUUID(),
-      createdAt: now
-    }));
-
-    // 기존 데이터에서 동일한 기간(startDate, endDate)의 데이터는 제거 (덮어쓰기 지원)
     const targetStart = normalizeDateStr(params.records[0].startDate);
     const targetEnd = normalizeDateStr(params.records[0].endDate);
-    
-    const cleanedData = existingData.filter((r: any) => 
-      !(normalizeDateStr(r.startDate) === targetStart && normalizeDateStr(r.endDate) === targetEnd)
-    );
 
-    const updatedData = [...cleanedData, ...newRecords];
-
-    await fs.writeFile(filePath, JSON.stringify(updatedData, null, 2), 'utf-8');
-
-    // 마스터 단가도 대량 업데이트 루프 돌리기 (saveResult 성공 후 UI에서 하기도 하지만 서버에서도 보장)
-    try {
-      const ratesPath = path.join(process.cwd(), 'data', 'emergency_rates.json');
-      const ratesContent = await fs.readFile(ratesPath, 'utf-8');
-      const rates = JSON.parse(ratesContent);
-      params.records.forEach(r => {
-        rates[r.name] = r.rate;
+    await prisma.$transaction(async (tx) => {
+      // 1. 기존 데이터 삭제 (덮어쓰기)
+      await tx.emergencySettlement.deleteMany({
+        where: { startDate: targetStart, endDate: targetEnd }
       });
-      await fs.writeFile(ratesPath, JSON.stringify(rates, null, 2), 'utf-8');
-    } catch (e) {
-      console.warn('Failed to sync master rates during save:', e);
-    }
+
+      // 2. 새 레코드 생성
+      await tx.emergencySettlement.createMany({
+        data: params.records.map(record => ({
+          name: record.name,
+          startDate: targetStart,
+          endDate: targetEnd,
+          count: record.count,
+          rate: record.rate,
+          total: record.total,
+          dates: record.dates || []
+        }))
+      });
+
+      // 3. 마스터 단가 동기화
+      for (const r of params.records) {
+        await tx.emergencyRate.upsert({
+          where: { name: r.name },
+          update: { rate: r.rate },
+          create: { name: r.name, rate: r.rate }
+        });
+      }
+    });
 
     revalidatePath('/billing/emergency');
     return { success: true };
@@ -863,55 +823,43 @@ export async function saveEmergencySettlements(params: {
 export async function deleteEmergencySettlements(params: {
   startDate: string;
   endDate: string;
-  names?: string[]; // 선택된 거래처 명단 (없으면 전체 삭제)
+  names?: string[];
 }) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'emergency_settlements.json');
-    let existingData: any[] = [];
-    
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      existingData = JSON.parse(fileContent);
-    } catch (e) {
-      return { success: true }; // 파일이 없으면 이미 삭제된 것으로 간주
-    }
-
     const targetStart = normalizeDateStr(params.startDate);
     const targetEnd = normalizeDateStr(params.endDate);
 
-    // 1. 삭제 대상 레코드와 유지 대상 레코드 분리
-    // names가 제공된 경우: 기간이 일치 && 이름이 목록에 포함된 것만 삭제
-    // names가 없는 경우: 기존처럼 기간이 일치하는 모든 것 삭제
-    const isTarget = (r: any) => {
-      const dateMatch = normalizeDateStr(r.startDate) === targetStart && normalizeDateStr(r.endDate) === targetEnd;
-      if (!dateMatch) return false;
+    await prisma.$transaction(async (tx) => {
       if (params.names && params.names.length > 0) {
-        return params.names.includes(r.name);
-      }
-      return true;
-    };
-
-    const targetNames = existingData.filter(isTarget).map(r => r.name);
-    const updatedData = existingData.filter(r => !isTarget(r));
-
-    await fs.writeFile(filePath, JSON.stringify(updatedData, null, 2), 'utf-8');
-
-    // 2. [중요] 연동된 마스터 단가도 삭제 처리하여 UI에서 다시 빈칸으로 보이게 함
-    if (targetNames.length > 0) {
-      try {
-        const ratesPath = path.join(process.cwd(), 'data', 'emergency_rates.json');
-        const ratesContent = await fs.readFile(ratesPath, 'utf-8');
-        const rates = JSON.parse(ratesContent);
-        
-        targetNames.forEach(name => {
-          delete rates[name];
+        await tx.emergencySettlement.deleteMany({
+          where: {
+            startDate: targetStart,
+            endDate: targetEnd,
+            name: { in: params.names }
+          }
         });
-        
-        await fs.writeFile(ratesPath, JSON.stringify(rates, null, 2), 'utf-8');
-      } catch (e) {
-        console.warn('Failed to cleanup master rates:', e);
+
+        // 마스터 단가도 삭제 (UI 초기화용)
+        await tx.emergencyRate.deleteMany({
+          where: { name: { in: params.names } }
+        });
+      } else {
+        // 기간 전체 삭제
+        const targets = await tx.emergencySettlement.findMany({
+          where: { startDate: targetStart, endDate: targetEnd },
+          select: { name: true }
+        });
+        const targetNames = targets.map(t => t.name);
+
+        await tx.emergencySettlement.deleteMany({
+          where: { startDate: targetStart, endDate: targetEnd }
+        });
+
+        await tx.emergencyRate.deleteMany({
+          where: { name: { in: targetNames } }
+        });
       }
-    }
+    });
 
     revalidatePath('/billing/emergency');
     return { success: true };
@@ -929,32 +877,24 @@ export async function getSavedInquirySettlements(params: {
   searchTerm?: string;
 }) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'inquiry_settlements.json');
-    let settlements: any[] = [];
-    
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      settlements = JSON.parse(fileContent);
-    } catch (e) {
-      return { success: true, data: [] };
-    }
-
     const targetStart = normalizeDateStr(params.startDate);
     const targetEnd = normalizeDateStr(params.endDate);
 
-    const filtered = settlements.filter(s => {
-      const dateMatch = normalizeDateStr(s.startDate) === targetStart && normalizeDateStr(s.endDate) === targetEnd;
-      if (!dateMatch) return false;
-      
-      if (!params.searchTerm) return true;
-      const term = params.searchTerm.toLowerCase();
-      return (
-        s.name.toLowerCase().includes(term) ||
-        s.so.toLowerCase().includes(term) ||
-        s.nap.toLowerCase().includes(term) ||
-        s.chung.toLowerCase().includes(term) ||
-        (s.memo && s.memo.toLowerCase().includes(term))
-      );
+    const filtered = await prisma.inquirySettlement.findMany({
+      where: {
+        startDate: targetStart,
+        endDate: targetEnd,
+        ...(params.searchTerm ? {
+          OR: [
+            { name: { contains: params.searchTerm, mode: 'insensitive' } },
+            { so: { contains: params.searchTerm, mode: 'insensitive' } },
+            { nap: { contains: params.searchTerm, mode: 'insensitive' } },
+            { chung: { contains: params.searchTerm, mode: 'insensitive' } },
+            { memo: { contains: params.searchTerm, mode: 'insensitive' } }
+          ]
+        } : {})
+      },
+      orderBy: { date: 'asc' }
     });
 
     return { success: true, data: filtered };
@@ -969,13 +909,10 @@ export async function getSavedInquirySettlements(params: {
  */
 export async function getFixedSettlements() {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'fixed_settlements.json');
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      return { success: true, data: JSON.parse(fileContent) };
-    } catch (e) {
-      return { success: true, data: [] };
-    }
+    const data = await prisma.fixedSettlement.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    return { success: true, data };
   } catch (error) {
     console.error('Failed to get fixed settlements:', error);
     return { success: false, error: '고정 비용 목록을 가져오는 중 오류가 발생했습니다.' };
@@ -992,33 +929,25 @@ export async function saveFixedSettlement(params: {
   memo: string;
 }) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'fixed_settlements.json');
-    let data: any[] = [];
-    
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      data = JSON.parse(fileContent);
-    } catch (e) {}
-
-    const now = new Date().toISOString();
-    
     if (params.id) {
-      // 수정
-      const idx = data.findIndex(item => item.id === params.id);
-      if (idx > -1) {
-        data[idx] = { ...data[idx], ...params, updatedAt: now };
-      }
+      await prisma.fixedSettlement.update({
+        where: { id: params.id },
+        data: {
+          name: params.name,
+          amount: params.amount,
+          note: params.memo
+        }
+      });
     } else {
-      // 추가
-      data.push({
-        ...params,
-        id: crypto.randomUUID(),
-        createdAt: now,
-        updatedAt: now
+      await prisma.fixedSettlement.create({
+        data: {
+          name: params.name,
+          amount: params.amount,
+          note: params.memo
+        }
       });
     }
 
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
     revalidatePath('/');
     return { success: true };
   } catch (error) {
@@ -1032,16 +961,9 @@ export async function saveFixedSettlement(params: {
  */
 export async function deleteFixedSettlement(id: string) {
   try {
-    const filePath = path.join(process.cwd(), 'data', 'fixed_settlements.json');
-    let data: any[] = [];
-    
-    try {
-      const fileContent = await fs.readFile(filePath, 'utf-8');
-      data = JSON.parse(fileContent);
-    } catch (e) {}
-
-    const filtered = data.filter(item => item.id !== id);
-    await fs.writeFile(filePath, JSON.stringify(filtered, null, 2), 'utf-8');
+    await prisma.fixedSettlement.delete({
+      where: { id }
+    });
     revalidatePath('/');
     return { success: true };
   } catch (error) {
