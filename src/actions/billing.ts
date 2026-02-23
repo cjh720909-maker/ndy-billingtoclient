@@ -311,10 +311,7 @@ export async function getInquiryBilling(params: {
   const { startDate, endDate, searchTerm } = params;
 
   try {
-    const connection = await mysql.createConnection({
-      uri: process.env.MYSQL_URL,
-      connectTimeout: 5000
-    });
+    const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
     try {
       await connection.query("SET NAMES 'latin1'");
 
@@ -570,10 +567,7 @@ export async function getEmergencyShipments(params: {
   const { startDate, endDate } = params;
 
   try {
-    const connection = await mysql.createConnection({
-      uri: process.env.MYSQL_URL,
-      connectTimeout: 5000
-    });
+    const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
     try {
       await connection.query("SET NAMES 'latin1'");
 
