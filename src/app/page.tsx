@@ -177,7 +177,7 @@ export default function Home() {
           { v: item.amount, s: sCellNumber },
           { v: '월 고정', s: sCell },
           { v: item.amount, s: sCellNumber },
-          { v: item.memo || '-', s: sCell }
+          { v: item.note || '-', s: sCell }
         ]);
       });
       wsData.push([]);
@@ -590,7 +590,7 @@ export default function Home() {
                       </td>
                       <td className="px-4 py-2.5 text-[12px] font-bold text-amber-600 text-right">{item.amount.toLocaleString()}원</td>
                       <td className="px-4 py-2.5">
-                        <span className="text-[11px] text-slate-700 font-medium">{item.memo || '-'}</span>
+                        <span className="text-[11px] text-slate-700 font-medium">{item.note || '-'}</span>
                       </td>
                       <td className="px-4 py-2 text-center">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -598,7 +598,7 @@ export default function Home() {
                             onClick={() => {
                               setIsAddingFixed(true);
                               setEditingFixedId(item.id);
-                              setFixedForm({ name: item.name, amount: item.amount, memo: item.memo || '' });
+                              setFixedForm({ name: item.name, amount: item.amount, memo: item.note || '' });
                             }}
                             className="p-1 text-slate-400 hover:text-indigo-600"
                           >
