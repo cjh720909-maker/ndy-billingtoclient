@@ -198,11 +198,53 @@ export async function getIntegratedBillingSummary(params: {
       };
     });
 
+    // GS 진주 일요일 출고 데이터 조회 (MySQL)
+    let gsJinju = { count: 0, totalAmount: 0 };
+    try {
+      const connection = await mysql.createConnection({
+        uri: process.env.MYSQL_URL,
+        connectTimeout: 5000
+      });
+      try {
+        await connection.query("SET NAMES 'latin1'");
+        
+        // 날짜 범위 내 '진주' 포함된 모든 데이터 조회
+        const [rows]: any[] = await connection.execute(
+          `SELECT B_DATE, B_C_NAME FROM t_balju 
+           WHERE B_DATE >= ? AND B_DATE <= ?`,
+          [startDate, endDate]
+        );
+
+        const decode = (val: any) => {
+          if (!val) return '';
+          return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
+        };
+
+        // 진주 일요일 출고 필터링 (DAYOFWEEK: 1=일요일)
+        const jinjuSundays = rows.filter((row: any) => {
+          const name = decode(row.B_C_NAME);
+          const date = new Date(row.B_DATE);
+          return name.includes('진주') && date.getDay() === 0;
+        });
+
+        const count = jinjuSundays.length;
+        gsJinju = {
+          count,
+          totalAmount: count * 150000
+        };
+      } finally {
+        await connection.end();
+      }
+    } catch (e) {
+      console.error('Failed to fetch GS Jinju data:', e);
+    }
+
     return {
       success: true,
       data: {
         daily: dailyWithBilling,
         gs: gsSummary ? { summary: gsSummary } : null,
+        gsJinju, // GS 진주 데이터 추가
         emergency: emergencySettlements,
         inquiry: inquirySettlements,
         fixed: fixedSettlements
@@ -210,7 +252,7 @@ export async function getIntegratedBillingSummary(params: {
     };
   } catch (error) {
     console.error('Failed to get integrated billing summary:', error);
-    return { success: false, error: '통합 요약 데이터를 가져오는 중 오류가 발생했습니다.' };
+    return { success: false, error: '데이터를 가져오는 중 오류가 발생했습니다.' };
   }
 }
 

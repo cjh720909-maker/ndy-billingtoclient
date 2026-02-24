@@ -49,10 +49,11 @@ export default function Home() {
   const [integratedData, setIntegratedData] = useState<{
     daily: any[];
     gs: any | null;
+    gsJinju: any | null;
     emergency: any[];
     inquiry: any[];
     fixed: any[];
-  }>({ daily: [], gs: null, emergency: [], inquiry: [], fixed: [] });
+  }>({ daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] });
   const [loading, setLoading] = useState(false);
 
   const fetchData = async (start: string, end: string) => {
@@ -61,7 +62,7 @@ export default function Home() {
     if (result.success && result.data) {
       setIntegratedData(result.data);
     } else {
-      setIntegratedData({ daily: [], gs: null, emergency: [], inquiry: [], fixed: [] });
+      setIntegratedData({ daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] });
     }
     setLoading(false);
   };
@@ -205,6 +206,17 @@ export default function Home() {
           { v: gs.totalAmount, s: sCellNumber },
           { v: `평일 ${gs.weekday}/토 ${gs.saturday}/일 ${gs.sunday}${gs.extraTrucks > 0 ? ` (+2회전 ${gs.extraTrucks}회)` : ''}`, s: sCell }
         ]);
+
+        if (integratedData.gsJinju && integratedData.gsJinju.count > 0) {
+          wsData.push([
+            { v: 'GS 진주', s: sCell },
+            { v: 'KAM1팀', s: sCell },
+            { v: 150000, s: sCellNumber },
+            { v: integratedData.gsJinju.count, s: sCellNumber },
+            { v: integratedData.gsJinju.totalAmount, s: sCellNumber },
+            { v: 'GS 진주 일요일 출고', s: sCell }
+          ]);
+        }
       }
       
       if (gsBusanFrozen) {
@@ -395,6 +407,10 @@ export default function Home() {
       cost += integratedData.gs.summary.totalAmount;
       const gsDays = (integratedData.gs.summary.weekday + integratedData.gs.summary.saturday + integratedData.gs.summary.sunday);
       count += gsDays;
+    }
+    if (integratedData.gsJinju) {
+      cost += integratedData.gsJinju.totalAmount;
+      count += integratedData.gsJinju.count;
     }
 
     // 긴급 출고
@@ -658,6 +674,23 @@ export default function Home() {
                             </tr>
                           );
                         })()}
+                        {integratedData.gsJinju && integratedData.gsJinju.count > 0 && (
+                          <tr className="hover:bg-indigo-50/10 transition-colors bg-amber-50/5">
+                            <td className="px-4 py-2.5 text-[12px] font-semibold text-slate-800">GS 진주</td>
+                            <td className="px-4 py-2.5 text-[12px] text-slate-500">KAM1팀</td>
+                            <td className="px-4 py-2.5 text-[12px] font-medium text-slate-500 text-right">150,000원</td>
+                            <td className="px-4 py-2.5 text-center">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-100 text-[10px] font-bold text-indigo-700">
+                                {integratedData.gsJinju.count}일
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-[12px] font-bold text-indigo-600 text-right">{integratedData.gsJinju.totalAmount.toLocaleString()}원</td>
+                            <td className="px-4 py-2.5">
+                              <span className="text-[11px] text-slate-700 font-bold">GS 진주 일요일 출고</span>
+                            </td>
+                            <td className="px-4 py-2.5"></td>
+                          </tr>
+                        )}
                         {gsBusanFrozen && (
                           <tr className="hover:bg-indigo-50/10 transition-colors bg-amber-50/5">
                             <td className="px-4 py-2.5 text-[12px] font-semibold text-slate-800">{gsBusanFrozen.placeName}</td>
