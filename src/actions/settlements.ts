@@ -150,8 +150,8 @@ export async function saveDailySummary(params: {
   }
 }
 
+
 /**
- * 지점 청구 통합 요약 데이터 조회
  * 저장된 일일, GS, 긴급 정산 요약 데이터를 기간별로 필터링하여 반환
  */
 export async function getIntegratedBillingSummary(params: {
@@ -159,6 +159,7 @@ export async function getIntegratedBillingSummary(params: {
   endDate: string;
 }) {
   const { startDate, endDate } = params;
+
   const startNum = Number(startDate.replace(/[^0-9]/g, ''));
   const endNum = Number(endDate.replace(/[^0-9]/g, ''));
 
@@ -180,10 +181,10 @@ export async function getIntegratedBillingSummary(params: {
         where: { startDate, endDate }
       }),
       prisma.emergencySettlement.findMany({
-        where: { startDate: startNum.toString(), endDate: endNum.toString() }
+        where: { startDate, endDate }
       }),
       prisma.inquirySettlement.findMany({
-        where: { startDate: startNum.toString(), endDate: endNum.toString() }
+        where: { startDate, endDate }
       }),
       prisma.fixedSettlement.findMany(),
       prisma.billingItem.findMany()
@@ -198,17 +199,16 @@ export async function getIntegratedBillingSummary(params: {
       };
     });
 
-    // GS 진주 일요일 출고 데이터 조회 (MySQL)
-    let gsJinju = { count: 0, totalAmount: 0 };
+    // GS 진주 일요일 출고 데이터 및 고정비 결정
+    let finalGsJinju = { count: 0, totalAmount: 0 };
+    let finalFixedCosts = fixedSettlements;
+
+    // 실시간 집계
     try {
-      const connection = await mysql.createConnection({
-        uri: process.env.MYSQL_URL,
-        connectTimeout: 5000
-      });
+      const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
       try {
         await connection.query("SET NAMES 'latin1'");
         
-        // 날짜 범위 내 '진주' 포함된 모든 데이터 조회
         const [rows]: any[] = await connection.execute(
           `SELECT B_DATE, B_C_NAME FROM t_balju 
            WHERE B_DATE >= ? AND B_DATE <= ?`,
@@ -220,23 +220,26 @@ export async function getIntegratedBillingSummary(params: {
           return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
         };
 
-        // 진주 일요일 출고 필터링 (DAYOFWEEK: 1=일요일)
-        const jinjuSundays = rows.filter((row: any) => {
+        const uniqueSundayDates = new Set<string>();
+        rows.forEach((row: any) => {
           const name = decode(row.B_C_NAME);
-          const date = new Date(row.B_DATE);
-          return name.includes('진주') && date.getDay() === 0;
+          const dateObj = new Date(row.B_DATE);
+          if (name.includes('진주') && dateObj.getDay() === 0) {
+            const dateStr = dateObj.toISOString().split('T')[0];
+            uniqueSundayDates.add(dateStr);
+          }
         });
 
-        const count = jinjuSundays.length;
-        gsJinju = {
-          count,
-          totalAmount: count * 150000
+        finalGsJinju = {
+          count: uniqueSundayDates.size,
+          totalAmount: uniqueSundayDates.size * 150000
         };
       } finally {
         await connection.end();
       }
     } catch (e) {
-      console.error('Failed to fetch GS Jinju data:', e);
+      console.error('Failed to fetch GS Jinju data from MySQL:', e);
+      // MySQL 실패 시에도 나머지 데이터는 보여줄 수 있도록 에러만 기록하고 넘어감
     }
 
     return {
@@ -244,10 +247,10 @@ export async function getIntegratedBillingSummary(params: {
       data: {
         daily: dailyWithBilling,
         gs: gsSummary ? { summary: gsSummary } : null,
-        gsJinju, // GS 진주 데이터 추가
+        gsJinju: finalGsJinju,
         emergency: emergencySettlements,
         inquiry: inquirySettlements,
-        fixed: fixedSettlements
+        fixed: finalFixedCosts
       }
     };
   } catch (error) {

@@ -161,3 +161,4 @@ model Config {
 
   @@map("NDY_Config")
 }
+

@@ -62,6 +62,8 @@ export default function Home() {
     if (result.success && result.data) {
       setIntegratedData(result.data);
     } else {
+      console.error('Fetch data failed:', result.error);
+      alert(result.error || '데이터를 가져오는데 실패했습니다.');
       setIntegratedData({ daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] });
     }
     setLoading(false);
@@ -93,7 +95,7 @@ export default function Home() {
 
   // 엑셀 다운로드 구현
   const handleExcelDownload = () => {
-    if (Object.keys(integratedData).every(k => (integratedData as any)[k] === null || (Array.isArray((integratedData as any)[k]) && (integratedData as any)[k].length === 0))) {
+    if (integratedData.daily.length === 0 && !integratedData.gs && integratedData.emergency.length === 0 && integratedData.inquiry.length === 0 && integratedData.fixed.length === 0 && (integratedData.gsJinju?.count || 0) === 0) {
       alert('다운로드할 데이터가 없습니다.');
       return;
     }
@@ -523,7 +525,7 @@ export default function Home() {
                     데이터를 통합하고 있습니다...
                   </td>
                 </tr>
-              ) : Object.keys(integratedData).every(k => (integratedData as any)[k] === null || (Array.isArray((integratedData as any)[k]) && (integratedData as any)[k].length === 0)) ? (
+              ) : (integratedData.daily.length === 0 && !integratedData.gs && integratedData.emergency.length === 0 && integratedData.inquiry.length === 0 && integratedData.fixed.length === 0 && (integratedData.gsJinju?.count || 0) === 0) ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                     저장된 정산 요약 데이터가 없습니다. 각 정산 페이지에서 &apos;결과 저장&apos;을 먼저 진행해 주세요.

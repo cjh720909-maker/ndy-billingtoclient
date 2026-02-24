@@ -320,11 +320,10 @@ export async function getInquiryBilling(params: {
         [startDate, endDate]
       );
 
-      // 개별 행의 저장 및 매칭을 위한 저장된 데이터 로드
-      let savedItemsMap = new Map<string, string>(); // key -> id
+      const savedItemsMap = new Map<string, string>(); // key -> id
       try {
-        const targetStart = normalizeDateStr(startDate);
-        const targetEnd = normalizeDateStr(endDate);
+        const targetStart = startDate;
+        const targetEnd = endDate;
         
         const savedSettlements = await prisma.inquirySettlement.findMany({
           where: { startDate: targetStart, endDate: targetEnd }
@@ -404,8 +403,8 @@ export async function getInquiryBilling(params: {
  */
 async function checkInquirySaved(startDate: string, endDate: string) {
   try {
-    const targetStart = normalizeDateStr(startDate);
-    const targetEnd = normalizeDateStr(endDate);
+    const targetStart = startDate;
+    const targetEnd = endDate;
     const count = await prisma.inquirySettlement.count({
       where: { startDate: targetStart, endDate: targetEnd }
     });
@@ -439,8 +438,8 @@ export async function saveInquirySettlements(params: {
       return { success: false, error: '저장할 레코드가 없습니다.' };
     }
 
-    const targetStart = normalizeDateStr(params.records[0].startDate);
-    const targetEnd = normalizeDateStr(params.records[0].endDate);
+    const targetStart = params.records[0].startDate;
+    const targetEnd = params.records[0].endDate;
     
     // 증분 저장 로직: 저장하려는 항목들과 키가 겹치는 기존 레코드만 지움
     const newKeys = params.records.map((r: any) => ({
@@ -503,8 +502,8 @@ export async function deleteInquirySettlements(params: {
   ids?: string[];
 }) {
   try {
-    const targetStart = normalizeDateStr(params.startDate);
-    const targetEnd = normalizeDateStr(params.endDate);
+    const targetStart = params.startDate;
+    const targetEnd = params.endDate;
 
     if (params.ids && params.ids.length > 0) {
       await prisma.inquirySettlement.deleteMany({
@@ -635,11 +634,10 @@ export async function getEmergencyShipments(params: {
         dates: Array.from(dateSets[item.name]).sort().reverse() // 최신순 정렬된 날짜 리스트
       }));
 
-      // 정산 데이터 저장 여부 확인
       let isSaved = false;
       try {
-        const targetStart = normalizeDateStr(startDate);
-        const targetEnd = normalizeDateStr(endDate);
+        const targetStart = startDate;
+        const targetEnd = endDate;
         const count = await prisma.emergencySettlement.count({
           where: { startDate: targetStart, endDate: targetEnd }
         });
@@ -792,8 +790,8 @@ export async function saveEmergencySettlements(params: {
       return { success: false, error: '저장할 레코드가 없습니다.' };
     }
 
-    const targetStart = normalizeDateStr(params.records[0].startDate);
-    const targetEnd = normalizeDateStr(params.records[0].endDate);
+    const targetStart = params.records[0].startDate;
+    const targetEnd = params.records[0].endDate;
 
     await prisma.$transaction(async (tx) => {
       // 1. 기존 데이터 삭제 (덮어쓰기)
@@ -841,8 +839,8 @@ export async function deleteEmergencySettlements(params: {
   names?: string[];
 }) {
   try {
-    const targetStart = normalizeDateStr(params.startDate);
-    const targetEnd = normalizeDateStr(params.endDate);
+    const targetStart = params.startDate;
+    const targetEnd = params.endDate;
 
     await prisma.$transaction(async (tx) => {
       if (params.names && params.names.length > 0) {
@@ -892,8 +890,8 @@ export async function getSavedInquirySettlements(params: {
   searchTerm?: string;
 }) {
   try {
-    const targetStart = normalizeDateStr(params.startDate);
-    const targetEnd = normalizeDateStr(params.endDate);
+    const targetStart = params.startDate;
+    const targetEnd = params.endDate;
 
     const filtered = await prisma.inquirySettlement.findMany({
       where: {
