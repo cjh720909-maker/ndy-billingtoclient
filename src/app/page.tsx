@@ -177,9 +177,9 @@ export default function Home() {
         wsData.push([
           { v: item.name, s: sCell },
           { v: '고정비용', s: sCell },
-          { v: item.amount, s: sCellNumber },
+          { v: item.amount, t: 'n', s: sCellNumber },
           { v: '월 고정', s: sCell },
-          { v: item.amount, s: sCellNumber },
+          { v: item.amount, t: 'n', s: sCellNumber },
           { v: item.note || '-', s: sCell }
         ]);
       });
@@ -203,9 +203,9 @@ export default function Home() {
         wsData.push([
           { v: 'GS수퍼 (부산/양산 통합)', s: sCell },
           { v: 'KAM1팀', s: sCell },
-          { v: 150000, s: sCellNumber },
-          { v: gs.weekday + gs.saturday + gs.sunday, s: sCellNumber },
-          { v: gs.totalAmount, s: sCellNumber },
+          { v: 150000, t: 'n', s: sCellNumber },
+          { v: gs.weekday + gs.saturday + gs.sunday, t: 'n', s: sCellNumber },
+          { v: gs.totalAmount, t: 'n', s: sCellNumber },
           { v: `평일 ${gs.weekday}/토 ${gs.saturday}/일 ${gs.sunday}${gs.extraTrucks > 0 ? ` (+2회전 ${gs.extraTrucks}회)` : ''}`, s: sCell }
         ]);
 
@@ -213,9 +213,9 @@ export default function Home() {
           wsData.push([
             { v: 'GS 진주', s: sCell },
             { v: 'KAM1팀', s: sCell },
-            { v: 150000, s: sCellNumber },
-            { v: integratedData.gsJinju.count, s: sCellNumber },
-            { v: integratedData.gsJinju.totalAmount, s: sCellNumber },
+            { v: 150000, t: 'n', s: sCellNumber },
+            { v: integratedData.gsJinju.count, t: 'n', s: sCellNumber },
+            { v: integratedData.gsJinju.totalAmount, t: 'n', s: sCellNumber },
             { v: 'GS 진주 일요일 출고', s: sCell }
           ]);
         }
@@ -225,9 +225,9 @@ export default function Home() {
         wsData.push([
           { v: gsBusanFrozen.placeName, s: sCell },
           { v: gsBusanFrozen.billingRecipient || 'KAM1팀', s: sCell },
-          { v: Math.round(gsBusanFrozen.totalAmount / gsBusanFrozen.deliveryDays), s: sCellNumber },
-          { v: gsBusanFrozen.deliveryDays, s: sCellNumber },
-          { v: gsBusanFrozen.totalAmount, s: sCellNumber },
+          { v: Math.round(gsBusanFrozen.totalAmount / gsBusanFrozen.deliveryDays), t: 'n', s: sCellNumber },
+          { v: gsBusanFrozen.deliveryDays, t: 'n', s: sCellNumber },
+          { v: gsBusanFrozen.totalAmount, t: 'n', s: sCellNumber },
           { v: 'GS 냉동 정산', s: sCell }
         ]);
       }
@@ -249,9 +249,9 @@ export default function Home() {
         wsData.push([
           { v: item.placeName, s: sCell },
           { v: item.billingRecipient || '본사청구', s: sCell },
-          { v: Math.round(item.totalAmount / item.deliveryDays), s: sCellNumber },
-          { v: item.deliveryDays, s: sCellNumber },
-          { v: item.totalAmount, s: sCellNumber },
+          { v: Math.round(item.totalAmount / item.deliveryDays), t: 'n', s: sCellNumber },
+          { v: item.deliveryDays, t: 'n', s: sCellNumber },
+          { v: item.totalAmount, t: 'n', s: sCellNumber },
           { v: '정산 정보', s: sCell }
         ]);
       });
@@ -280,9 +280,9 @@ export default function Home() {
         wsData.push([
           { v: item.name, s: sCell },
           { v: '긴급출고', s: sCell },
-          { v: item.rate, s: sCellNumber },
-          { v: item.count, s: sCellNumber },
-          { v: item.rate * item.count, s: sCellNumber },
+          { v: item.rate, t: 'n', s: sCellNumber },
+          { v: item.count, t: 'n', s: sCellNumber },
+          { v: item.rate * item.count, t: 'n', s: sCellNumber },
           { v: formattedDates, s: sCell }
         ]);
       });
@@ -303,9 +303,9 @@ export default function Home() {
         wsData.push([
           { v: item.nap, s: sCell },
           { v: item.so, s: sCell },
-          { v: Math.round(item.kum / 1), s: sCellNumber },
-          { v: 1, s: sCellNumber },
-          { v: item.kum, s: sCellNumber },
+          { v: Math.round(item.kum / 1), t: 'n', s: sCellNumber },
+          { v: 1, t: 'n', s: sCellNumber },
+          { v: item.kum, t: 'n', s: sCellNumber },
           { v: item.date, s: sCell }
         ]);
       });
@@ -325,8 +325,8 @@ export default function Home() {
       { v: '통합 합계', s: sTotalLabel },
       { v: '', s: sTotalLabel },
       { v: '', s: sTotalLabel },
-      { v: `${totals.count}회`, s: sTotalValue },
-      { v: totals.cost, s: sTotalValue },
+      { v: totals.count, t: 'n', s: sTotalValue },
+      { v: totals.cost, t: 'n', s: sTotalValue },
       { v: '', s: sTotalValue }
     ]);
 
