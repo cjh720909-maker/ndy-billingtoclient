@@ -7,13 +7,42 @@ import {
   ArrowRight,
   Settings,
   Save,
-  X
+  X,
+  Copy,
+  Check
 } from 'lucide-react';
 import { getDailySettlements, getGSPickingConfig, updateGSPickingConfig } from '@/actions/settlements';
+import { MonthSelector } from '@/components/MonthSelector';
+import { toPng } from 'html-to-image';
+
+const getKSTToday = () => {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
+  const kstGap = 9 * 60 * 60 * 1000; 
+  return new Date(utc + kstGap);
+};
+
+const formatDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function GSPickingSettlementPage() {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    return getKSTToday(); // defaults to current KST date
+  });
+
+  // GS Picking calculates based on the 1st to the last day of the selected month
+  const getBillingPeriod = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), 1);
+    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0); // Last day of the month
+    return { startDate: formatDate(start), endDate: formatDate(end) };
+  };
+
+  const { startDate, endDate } = React.useMemo(() => getBillingPeriod(selectedMonth), [selectedMonth]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -24,20 +53,9 @@ export default function GSPickingSettlementPage() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [tempConfig, setTempConfig] = useState({ boxesPerPallet: 78, ratePerPallet: 8000 });
   const [savingConfig, setSavingConfig] = useState(false);
-
-  const getKSTToday = () => {
-    const now = new Date();
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
-    const kstGap = 9 * 60 * 60 * 1000; 
-    return new Date(utc + kstGap);
-  };
-
-  const formatDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+  const [copying, setCopying] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const tableRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Load config
@@ -49,36 +67,11 @@ export default function GSPickingSettlementPage() {
       }
     };
     loadConfig();
-
-    // sessionStorage에서 이전 상태 복구
-    const savedFilter = sessionStorage.getItem('gs-picking-filter');
-    const savedData = sessionStorage.getItem('gs-picking-data');
-    
-    if (savedFilter) {
-      const { start, end, term } = JSON.parse(savedFilter);
-      setStartDate(start);
-      setEndDate(end);
-      setSearchTerm(term);
-      
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        setData(parsedData);
-        const qSum = parsedData.reduce((acc: number, cur: any) => acc + Number(String(cur.qty).replace(/,/g, '')), 0);
-        setTotals({ qty: qSum });
-      } else {
-        fetchData(start, end, term);
-      }
-    } else {
-      const today = getKSTToday();
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      const startStr = formatDate(firstDay);
-      const endStr = formatDate(today);
-      
-      setStartDate(startStr);
-      setEndDate(endStr);
-      fetchData(startStr, endStr, '');
-    }
   }, []);
+  // 초기 데이터 조회
+  useEffect(() => {
+    fetchData(startDate, endDate, searchTerm);
+  }, [startDate, endDate]); // Re-fetch when the month selector changes the derived dates
 
   const fetchData = async (start: string, end: string, term: string) => {
     setLoading(true);
@@ -108,36 +101,6 @@ export default function GSPickingSettlementPage() {
     fetchData(startDate, endDate, searchTerm);
   };
 
-  const setMonthCurrent = (triggerSearch = true) => {
-    const today = getKSTToday();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const start = formatDate(firstDay);
-    const end = formatDate(today);
-    setStartDate(start);
-    setEndDate(end);
-    if (triggerSearch) fetchData(start, end, searchTerm);
-  };
-
-  const setMonthPrevious = () => {
-    const today = getKSTToday();
-    const firstDayPrev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0); 
-    const start = formatDate(firstDayPrev);
-    const end = formatDate(lastDayPrev);
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
-  };
-
-  const setPayCycleRange = () => {
-    const today = getKSTToday();
-    const start = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-    const end = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
-  };
-
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     const res = await updateGSPickingConfig(tempConfig);
@@ -145,9 +108,38 @@ export default function GSPickingSettlementPage() {
       setConfig(tempConfig);
       setIsSettingsModalOpen(false);
     } else {
-      alert('설정 저장 중 오류가 발생했습니다.');
+      alert('설정 저장 실패');
     }
     setSavingConfig(false);
+  };
+
+  const copyAsImage = async () => {
+    if (!tableRef.current || data.length === 0) return;
+    
+    setCopying(true);
+    try {
+      // html-to-image works best when the element is visible and has a background
+      const dataUrl = await toPng(tableRef.current, {
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        style: {
+          borderRadius: '0',
+        }
+      });
+      
+      const blob = await (await fetch(dataUrl)).blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+      
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Copy as image failed:', err);
+      alert('이미지 복사 중 오류가 발생했습니다.');
+    } finally {
+      setCopying(false);
+    }
   };
 
   // 피벗 매트릭스 데이터 가공
@@ -210,17 +202,11 @@ export default function GSPickingSettlementPage() {
     <div className="space-y-2">
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-1.5 px-4 sticky top-0 z-40">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-indigo-400 focus-within:bg-white transition-all">
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" />
-              <ArrowRight size={12} className="text-slate-300" />
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" />
-            </div>
-            <div className="flex gap-1">
-              <button onClick={() => setMonthCurrent()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">당월</button>
-              <button onClick={() => setMonthPrevious()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">전월</button>
-              <button onClick={() => setPayCycleRange()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50">25일</button>
-            </div>
+          <div className="flex items-center gap-3">
+            <MonthSelector currentDate={selectedMonth} onChange={setSelectedMonth} />
+            <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+              {startDate} ~ {endDate}
+            </span>
           </div>
           <div className="flex gap-1.5">
             <button 
@@ -237,15 +223,11 @@ export default function GSPickingSettlementPage() {
             </button>
             <button 
               onClick={() => {
-                const today = getKSTToday();
-                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                const start = formatDate(firstDay);
-                const end = formatDate(today);
-                setStartDate(start);
-                setEndDate(end);
-                fetchData(start, end, '');
+                setSelectedMonth(getKSTToday());
+                setSearchTerm('');
               }} 
               className="p-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200"
+              title="초기화"
             >
               <RotateCcw size={14} />
             </button>
@@ -269,9 +251,29 @@ export default function GSPickingSettlementPage() {
               )}
             </h3>
           </div>
+          {data.length > 0 && (
+            <button
+              onClick={copyAsImage}
+              disabled={copying}
+              className={`
+                flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold transition-all shadow-sm
+                ${copySuccess 
+                  ? 'bg-emerald-500 text-white shadow-emerald-100' 
+                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 active:scale-95 shadow-slate-100'}
+              `}
+            >
+              {copying ? (
+                <div className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+              ) : copySuccess ? (
+                <><Check size={13} /> 복사완료</>
+              ) : (
+                <><Copy size={13} /> 화면 복사(이미지)</>
+              )}
+            </button>
+          )}
         </div>
         
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto" ref={tableRef}>
           {loading ? (
             <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" /></div>
           ) : data.length > 0 ? (

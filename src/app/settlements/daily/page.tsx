@@ -13,101 +13,94 @@ import {
 } from 'lucide-react';
 import { getDailySettlements, saveDailySummary } from '@/actions/settlements';
 import { getBillingItems, BillingItem } from '@/actions/billing';
+import { MonthSelector } from '@/components/MonthSelector';
+import { useSettlementStore } from '@/store/useSettlementStore';
+
+// 날짜 유틸리티: 순수 로컬 시간(KST) 기준으로 문자열 포맷팅
+const getKSTToday = () => {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
+  const kstGap = 9 * 60 * 60 * 1000; 
+  return new Date(utc + kstGap);
+};
+
+const formatDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const EMPTY_ARRAY: any[] = [];
 
 export default function DailySettlementPage() {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [data, setData] = useState<any[]>([]); // 초기엔 빈 상태
+  const { daily, setDailyState, syncDateAcrossPages } = useSettlementStore();
+  const { query, data: storeData, isSaved, hasSearched } = daily;
+  
+  const selectedMonthStr = query.selectedMonth;
+  const selectedMonth = new Date(selectedMonthStr);
+
+  const setSelectedMonth = (newDate: Date) => {
+    syncDateAcrossPages(newDate.toISOString());
+  };
+
+  const getBillingPeriod = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth() - 1, 26);
+    const end = new Date(date.getFullYear(), date.getMonth(), 25);
+    return { startDate: formatDate(start), endDate: formatDate(end) };
+  };
+
+  const { startDate, endDate } = React.useMemo(() => getBillingPeriod(selectedMonth), [selectedMonth]);
+
+  const searchTerm = query.searchTerm;
+  const setSearchTerm = (term: string) => setDailyState({ query: { ...query, searchTerm: term } });
+  
+  const data = storeData || EMPTY_ARRAY;
+
   const [loading, setLoading] = useState(false);
-  const [totals, setTotals] = useState({ qty: 0, weight: 0 });
   const [billingItems, setBillingItems] = useState<BillingItem[]>([]);
   const [saving, setSaving] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
 
-  // 날짜 유틸리티: 순수 로컬 시간(KST) 기준으로 문자열 포맷팅
-  const getKSTToday = () => {
-    const now = new Date();
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
-    const kstGap = 9 * 60 * 60 * 1000; 
-    return new Date(utc + kstGap);
-  };
+  const totals = React.useMemo(() => {
+    if (data.length > 0) {
+      const qSum = data.reduce((acc: number, cur: any) => acc + Number(String(cur.qty).replace(/,/g, '')), 0);
+      const wSum = data.reduce((acc: number, cur: any) => acc + Number(String(cur.weight).replace(/,/g, '')), 0);
+      return { qty: qSum, weight: wSum };
+    }
+    return { qty: 0, weight: 0 };
+  }, [data]);
 
-  const formatDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  // 초기 날짜 설정 및 상태 복구
+  // 단가 정보만 기본 로드
   useEffect(() => {
-    const loadInitialData = async () => {
-      // 1. 단가 정보 로드 (항상 최신 유지)
+    const loadBillingItems = async () => {
       const billingRes = await getBillingItems();
       if (billingRes.success && billingRes.data) {
         setBillingItems(billingRes.data);
       }
-
-      // 2. sessionStorage에서 이전 상태 복구
-      const savedFilter = sessionStorage.getItem('daily-settlement-filter');
-      const savedData = sessionStorage.getItem('daily-settlement-data');
-      
-      if (savedFilter) {
-        const { start, end, term, isSaved: savedIsSaved } = JSON.parse(savedFilter);
-        setStartDate(start);
-        setEndDate(end);
-        setSearchTerm(term);
-        setIsSaved(!!savedIsSaved);
-        
-        if (savedData) {
-          const parsedData = JSON.parse(savedData);
-          setData(parsedData);
-          const qSum = parsedData.reduce((acc: number, cur: any) => acc + Number(String(cur.qty).replace(/,/g, '')), 0);
-          const wSum = parsedData.reduce((acc: number, cur: any) => acc + Number(String(cur.weight).replace(/,/g, '')), 0);
-          setTotals({ qty: qSum, weight: wSum });
-        } else {
-          fetchData(start, end, term);
-        }
-      } else {
-        const today = getKSTToday();
-        const startStr = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-        const endStr = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-        
-        setStartDate(startStr);
-        setEndDate(endStr);
-        fetchData(startStr, endStr, '');
-      }
     };
-    
-    loadInitialData();
+    loadBillingItems();
   }, []);
-
-  const fetchData = async (start: string, end: string, term: string) => {
+  const fetchData = useCallback(async (start: string, end: string, term: string) => {
     setLoading(true);
     const result = await getDailySettlements({ startDate: start, endDate: end, searchTerm: term });
     if (result.success && result.data) {
-      setData(result.data);
-      setIsSaved(!!result.isSaved);
-      const qSum = result.data.reduce((acc: number, cur: any) => acc + Number(String(cur.qty).replace(/,/g, '')), 0);
-      const wSum = result.data.reduce((acc: number, cur: any) => acc + Number(String(cur.weight).replace(/,/g, '')), 0);
-      setTotals({ qty: qSum, weight: wSum });
-      
-      // 상태 저장
-      sessionStorage.setItem('daily-settlement-filter', JSON.stringify({ start, end, term, isSaved: result.isSaved }));
-      sessionStorage.setItem('daily-settlement-data', JSON.stringify(result.data));
+      setDailyState({ data: result.data, isSaved: !!result.isSaved, hasSearched: true });
     } else {
-      setData([]);
-      setIsSaved(false);
-      setTotals({ qty: 0, weight: 0 });
-      sessionStorage.removeItem('daily-settlement-data');
+      setDailyState({ data: [], isSaved: false, hasSearched: true });
     }
     setLoading(false);
-  };
+  }, [setDailyState]);
+
+  // 스토어에 조회 이력이 없고, 단가 정보가 로드되었을 때만 초기 조회
+  useEffect(() => {
+    if (billingItems.length > 0 && !hasSearched) {
+      fetchData(startDate, endDate, searchTerm);
+    }
+  }, [billingItems.length, hasSearched, startDate, endDate, searchTerm, fetchData]);
 
   // 조회 버튼 클릭 시 호출
   const handleSearch = () => {
-    setIsSaved(false);
+    setDailyState({ isSaved: false });
     fetchData(startDate, endDate, searchTerm);
   };
 
@@ -142,14 +135,7 @@ export default function DailySettlementPage() {
       });
 
       if (result.success) {
-        setIsSaved(true);
-        // 세션 스토리지의 isSaved 상태도 업데이트
-        const savedFilter = sessionStorage.getItem('daily-settlement-filter');
-        if (savedFilter) {
-          const filterObj = JSON.parse(savedFilter);
-          filterObj.isSaved = true;
-          sessionStorage.setItem('daily-settlement-filter', JSON.stringify(filterObj));
-        }
+        setDailyState({ isSaved: true });
         alert('일일 출고 정산 요약 정보가 저장되었습니다.');
       } else {
         alert('저장에 실패했습니다.');
@@ -162,41 +148,9 @@ export default function DailySettlementPage() {
     }
   };
 
-  // 당월: 이번 달 1일 ~ 오늘
-  const setMonthCurrent = (triggerSearch = true) => {
-    const today = getKSTToday();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const start = formatDate(firstDay);
-    const end = formatDate(today);
-    
-    setStartDate(start);
-    setEndDate(end);
-    if (triggerSearch) fetchData(start, end, searchTerm);
-  };
-
-  // 전월: 지난 달 1일 ~ 지난 달 말일
-  const setMonthPrevious = () => {
-    const today = getKSTToday();
-    const firstDayPrev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0); // 이번 달 0일 = 지난 달 말일
-    const start = formatDate(firstDayPrev);
-    const end = formatDate(lastDayPrev);
-    
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
-  };
-
-  // 25일 기준: 전월 26일 ~ 당월 25일
-  const setPayCycleRange = () => {
-    const today = getKSTToday();
-    const start = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-    const end = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-    
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
-  };
+  // 당월 (26일 기준): 전월 26일 ~ 당월 25일
+  // const setMonthCurrent = (triggerSearch = true) => { ... } is replaced by MonthSelector
+  // const setMonthPrevious = () => { ... } is replaced by MonthSelector
 
   // 매트릭스 데이터 계산 (데이터 변경 시 재계산)
   const matrixData = React.useMemo(() => {
@@ -274,27 +228,23 @@ export default function DailySettlementPage() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-1.5 px-4 sticky top-0 z-40">
         <div className="flex items-center justify-between">
           {/* Date Picker Range */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-indigo-400 focus-within:bg-white transition-all">
-              <input 
-                type="date" 
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" 
-              />
-              <ArrowRight size={12} className="text-slate-300" />
-              <input 
-                type="date" 
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" 
-              />
-            </div>
-            <div className="flex gap-1">
-              <button onClick={() => setMonthCurrent()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">당월</button>
-              <button onClick={() => setMonthPrevious()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">전월</button>
-              <button onClick={() => setPayCycleRange()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">25일</button>
-            </div>
+          <div className="flex items-center gap-3">
+            <MonthSelector currentDate={selectedMonth} onChange={setSelectedMonth} />
+            <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+              {startDate} ~ {endDate}
+            </span>
+          </div>
+
+          {/* Text Search Options Filter */}
+          <div className="flex gap-1">
+             <input 
+              type="text" 
+              placeholder="납품처/코드 검색" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="text-[12px] px-3 py-1.5 border border-slate-200 rounded-lg w-40 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
           </div>
 
           {/* Action Buttons */}
@@ -325,17 +275,11 @@ export default function DailySettlementPage() {
             </button>
             <button 
               onClick={() => {
-                const today = getKSTToday();
-                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                const start = formatDate(firstDay);
-                const end = formatDate(today);
-                setStartDate(start);
-                setEndDate(end);
-                setSearchTerm('');
-                setIsSaved(false);
-                fetchData(start, end, '');
+                const nowKST = getKSTToday();
+                syncDateAcrossPages(nowKST.toISOString());
+                setDailyState({ query: { selectedMonth: nowKST.toISOString(), searchTerm: '' }, hasSearched: false });
               }}
-              className="p-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200 transition-all"
+              className="p-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200 transition-all font-bold"
               title="초기화"
             >
               <RotateCcw size={14} />

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Download, 
   Printer, 
@@ -16,9 +16,12 @@ import {
   Trash2,
   Edit2
 } from 'lucide-react';
-import { getIntegratedBillingSummary } from '@/actions/settlements';
 import { saveFixedSettlement, deleteFixedSettlement } from '@/actions/billing';
+import { getIntegratedBillingSummary } from '@/actions/settlements';
+import { saveMonthlyClosing, getMonthlyClosing, deleteMonthlyClosing } from '@/actions/closing';
+import { MonthSelector } from '@/components/MonthSelector';
 import * as XLSX from 'xlsx-js-style';
+import { useSettlementStore } from '@/store/useSettlementStore';
 
 export default function Home() {
   const getKSTToday = () => {
@@ -34,64 +37,63 @@ export default function Home() {
     return `${year}-${month}-${day}`;
   };
 
-  const [startDate, setStartDate] = useState(() => {
-    const today = getKSTToday();
-    // 기본값: 전월 26일 ~ 당월 25일
-    const start = new Date(today.getFullYear(), today.getMonth() - 1, 26);
-    return formatDate(start);
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const today = getKSTToday();
-    const end = new Date(today.getFullYear(), today.getMonth(), 25);
-    return formatDate(end);
-  });
-  
-  const [integratedData, setIntegratedData] = useState<{
-    daily: any[];
-    gs: any | null;
-    gsJinju: any | null;
-    emergency: any[];
-    inquiry: any[];
-    fixed: any[];
-  }>({ daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] });
-  const [loading, setLoading] = useState(false);
+  const { integrated, setIntegratedState, syncDateAcrossPages } = useSettlementStore();
+  const { query, data: integratedDataRaw, isSaved: isClosed, hasSearched } = integrated;
+  const integratedData = integratedDataRaw || { daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] };
+  const safeData = integratedData;
+  const selectedMonthStr = query.selectedMonth;
+  const selectedMonth = new Date(selectedMonthStr);
 
-  const fetchData = async (start: string, end: string) => {
+  const setSelectedMonth = (newDate: Date) => {
+    syncDateAcrossPages(newDate.toISOString());
+  };
+
+  const getBillingPeriod = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth() - 1, 26);
+    const end = new Date(date.getFullYear(), date.getMonth(), 25);
+    return { startDate: formatDate(start), endDate: formatDate(end) };
+  };
+
+  const { startDate, endDate } = React.useMemo(() => getBillingPeriod(selectedMonth), [selectedMonth]);
+
+  const [loading, setLoading] = useState(false);
+  const [closedAt, setClosedAt] = useState<string | null>(null);
+  const [closingLoading, setClosingLoading] = useState(false);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fetchData = useCallback(async (start: string, end: string) => {
     setLoading(true);
+    
+    // 1. 마감 데이터 확인
+    const closingRes = await getMonthlyClosing({ startDate: start, endDate: end });
+    if (closingRes.success && closingRes.data) {
+      setClosedAt(new Date(closingRes.data.closedAt).toLocaleString());
+      setIntegratedState({ data: closingRes.data.data as any, isSaved: true, hasSearched: true });
+      setLoading(false);
+      return;
+    } else {
+      setClosedAt(null);
+    }
+
+    // 2. 실시간 데이터 조회
     const result = await getIntegratedBillingSummary({ startDate: start, endDate: end });
     if (result.success && result.data) {
-      setIntegratedData(result.data);
+      setIntegratedState({ data: result.data, isSaved: false, hasSearched: true });
     } else {
       console.error('Fetch data failed:', result.error);
       alert(result.error || '데이터를 가져오는데 실패했습니다.');
-      setIntegratedData({ daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] });
+      setIntegratedState({ data: { daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] }, isSaved: false, hasSearched: true });
     }
     setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchData(startDate, endDate);
   }, []);
 
+  useEffect(() => {
+    if (!hasSearched) {
+      fetchData(startDate, endDate);
+    }
+  }, [startDate, endDate, hasSearched, fetchData]);
+
   const handleSearch = () => fetchData(startDate, endDate);
-
-  // 당월 (26일 기준): 전월 26일 ~ 당월 25일
-  const setMonthCurrent = () => {
-    const today = getKSTToday();
-    const start = new Date(today.getFullYear(), today.getMonth() - 1, 26);
-    const end = new Date(today.getFullYear(), today.getMonth(), 25);
-    setStartDate(formatDate(start));
-    setEndDate(formatDate(end));
-  };
-
-  // 전월 (26일 기준): 전전월 26일 ~ 전월 25일
-  const setMonthPrevious = () => {
-    const today = getKSTToday();
-    const start = new Date(today.getFullYear(), today.getMonth() - 2, 26);
-    const end = new Date(today.getFullYear(), today.getMonth() - 1, 25);
-    setStartDate(formatDate(start));
-    setEndDate(formatDate(end));
-  };
 
   // 엑셀 다운로드 구현
   const handleExcelDownload = () => {
@@ -357,14 +359,58 @@ export default function Home() {
 
     XLSX.utils.book_append_sheet(wb, ws, '통합청구요약');
     
-    const fileName = `지점청구_통합요약_${startDate.replace(/-/g, '')}_${endDate.replace(/-/g, '')}.xlsx`;
+    const fileName = `지점청구_통합요약_${startDate.replace(/-/g, '')}_${endDate.replace(/-/g, '')}${isClosed ? '_마감문서' : ''}.xlsx`;
     XLSX.writeFile(wb, fileName);
+  };
+
+  // 마감 처리
+  const handleClosing = async () => {
+    if (integratedData.daily.length === 0 && !integratedData.gs && integratedData.emergency.length === 0 && integratedData.inquiry.length === 0 && integratedData.fixed.length === 0) {
+      alert('마감할 데이터가 없습니다.');
+      return;
+    }
+
+    if (!confirm(`${startDate} ~ ${endDate} 기간의 정산 데이터를 마감하시겠습니까?\n마감 시 현재 화면의 내용이 영구 보존되며, 원본 데이터 수정 시에도 반영되지 않습니다.`)) {
+      return;
+    }
+
+    setClosingLoading(true);
+    const res = await saveMonthlyClosing({
+      startDate,
+      endDate,
+      data: integratedData
+    });
+
+    if (res.success) {
+      alert('성공적으로 마감되었습니다.');
+      fetchData(startDate, endDate);
+    } else {
+      alert(res.error || '마감에 실패했습니다.');
+    }
+    setClosingLoading(false);
+  };
+
+  // 마감 취소
+  const handleCancelClosing = async () => {
+    if (!confirm('마감을 취소하시겠습니까?\n마감 취소 시 실시간 집계 데이터가 다시 표시됩니다.')) {
+      return;
+    }
+
+    setClosingLoading(true);
+    const res = await deleteMonthlyClosing({ startDate, endDate });
+    if (res.success) {
+      alert('마감이 취소되었습니다.');
+      fetchData(startDate, endDate);
+    } else {
+      alert(res.error || '마감 취소에 실패했습니다.');
+    }
+    setClosingLoading(false);
   };
 
   // 고정 비용 관리 상태
   const [isAddingFixed, setIsAddingFixed] = useState(false);
   const [editingFixedId, setEditingFixedId] = useState<string | null>(null);
-  const [fixedForm, setFixedForm] = useState({ name: '', amount: 0, memo: '' });
+  const [fixedForm, setFixedForm] = useState({ name: '', billingRecipient: '', amount: 0, memo: '' });
 
   const handleSaveFixed = async () => {
     if (!fixedForm.name || fixedForm.amount <= 0) {
@@ -378,7 +424,7 @@ export default function Home() {
     if (res.success) {
       setIsAddingFixed(false);
       setEditingFixedId(null);
-      setFixedForm({ name: '', amount: 0, memo: '' });
+      setFixedForm({ name: '', billingRecipient: '', amount: 0, memo: '' });
       fetchData(startDate, endDate);
     } else {
       alert(res.error);
@@ -399,83 +445,51 @@ export default function Home() {
     let count = 0;
 
     // 1일 출고
-    integratedData.daily.forEach(item => {
+    safeData.daily.forEach(item => {
       cost += item.totalAmount;
       count += item.deliveryDays;
     });
 
     // GS 출고
-    if (integratedData.gs) {
-      cost += integratedData.gs.summary.totalAmount;
-      const gsDays = (integratedData.gs.summary.weekday + integratedData.gs.summary.saturday + integratedData.gs.summary.sunday);
+    if (safeData.gs) {
+      cost += safeData.gs.summary.totalAmount;
+      const gsDays = (safeData.gs.summary.weekday + safeData.gs.summary.saturday + safeData.gs.summary.sunday);
       count += gsDays;
     }
-    if (integratedData.gsJinju) {
-      cost += integratedData.gsJinju.totalAmount;
-      count += integratedData.gsJinju.count;
+    if (safeData.gsJinju) {
+      cost += safeData.gsJinju.totalAmount;
+      count += safeData.gsJinju.count;
     }
 
     // 긴급 출고
-    integratedData.emergency.forEach(item => {
+    safeData.emergency.forEach(item => {
       cost += (item.rate * item.count);
       count += item.count;
     });
 
     // 청구 조회
-    integratedData.inquiry.forEach(item => {
+    safeData.inquiry.forEach(item => {
       cost += item.kum;
       count += 1; // 저장된 레코드당 1회로 간주
     });
 
     // 고정 비용 (추가)
-    integratedData.fixed.forEach(item => {
+    safeData.fixed.forEach(item => {
       cost += item.amount;
     });
 
     return { cost, count };
-  }, [integratedData]);
+  }, [safeData]);
 
   return (
     <div className="space-y-3">
-      {/* Date Filter Bar - Consolidated with Buttons */}
+      {/* Date Filter Bar - Consolidated with MonthSelector */}
       <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 mr-1">
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-600">
-              <Calendar size={13} className="text-slate-400" /> 시작
-            </div>
-            <input 
-              type="date" 
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 w-[125px]"
-            />
-            <span className="text-slate-300">-</span>
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-600">
-              <Calendar size={13} className="text-slate-400" /> 종료
-            </div>
-            <input 
-              type="date" 
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 w-[125px]"
-            />
-          </div>
-          
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg gap-0.5">
-            <button 
-              onClick={setMonthCurrent}
-              className="px-2.5 py-1.5 bg-white text-indigo-600 rounded-md text-[11px] font-bold shadow-sm hover:bg-slate-50 transition-all border border-slate-200"
-            >
-              당월
-            </button>
-            <button 
-              onClick={setMonthPrevious}
-              className="px-2.5 py-1.5 text-slate-500 hover:text-indigo-600 rounded-md text-[11px] font-bold transition-all"
-            >
-              전월
-            </button>
-          </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <MonthSelector currentDate={selectedMonth} onChange={setSelectedMonth} />
+          <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+            {startDate} ~ {endDate}
+          </span>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -498,8 +512,48 @@ export default function Home() {
           >
             <Download size={13} /> 엑셀
           </button>
+          
+          <div className="w-[1px] h-4 bg-slate-200 mx-1"></div>
+          
+          {!isClosed ? (
+            <button 
+              onClick={handleClosing}
+              disabled={loading || closingLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 rounded-lg text-[11px] font-bold text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+            >
+              {closingLoading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+              마감하기
+            </button>
+          ) : (
+            <button 
+              onClick={handleCancelClosing}
+              disabled={loading || closingLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 rounded-lg text-[11px] font-bold text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+            >
+              {closingLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              마감 취소
+            </button>
+          )}
         </div>
       </div>
+
+      {/* 마감 상태 알림 배너 */}
+      {isClosed && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+              <CheckCircle size={18} />
+            </div>
+            <div>
+              <p className="text-[13px] font-bold text-emerald-900">본 보고서는 마감된 자료입니다.</p>
+              <p className="text-[11px] text-emerald-600 font-medium">마감 일시: {closedAt} (이 기간의 데이터는 수정할 수 없습니다.)</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded uppercase">snapshot mode</span>
+          </div>
+        </div>
+      )}
 
       {/* Table Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
@@ -544,7 +598,7 @@ export default function Home() {
                            onClick={() => {
                              setIsAddingFixed(true);
                              setEditingFixedId(null);
-                             setFixedForm({ name: '', amount: 0, memo: '' });
+                             setFixedForm({ name: '', billingRecipient: '', amount: 0, memo: '' });
                            }}
                            className="flex items-center gap-1 px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-bold hover:bg-indigo-700"
                          >
@@ -566,7 +620,13 @@ export default function Home() {
                         />
                       </td>
                       <td className="px-4 py-2">
-                        <span className="text-[11px] text-slate-400">-</span>
+                        <input 
+                          type="text" 
+                          placeholder="청구처"
+                          value={fixedForm.billingRecipient}
+                          onChange={e => setFixedForm({...fixedForm, billingRecipient: e.target.value})}
+                          className="w-full px-2 py-1 text-[12px] border rounded"
+                        />
                       </td>
                       <td className="px-4 py-2" colSpan={2}>
                         <input 
@@ -599,7 +659,7 @@ export default function Home() {
                   {integratedData.fixed.map((item, idx) => (
                     <tr key={`fixed-${idx}`} className="hover:bg-indigo-50/10 transition-colors group">
                       <td className="px-4 py-2.5 text-[12px] font-semibold text-slate-800">{item.name}</td>
-                      <td className="px-4 py-2.5 text-[12px] text-slate-500">고정비용</td>
+                      <td className="px-4 py-2.5 text-[12px] text-slate-500">{item.billingRecipient || '본사청구'}</td>
                       <td className="px-4 py-2.5 text-[12px] font-medium text-slate-500 text-right">
                         {item.amount.toLocaleString()}원
                       </td>
@@ -610,25 +670,27 @@ export default function Home() {
                       <td className="px-4 py-2.5">
                         <span className="text-[11px] text-slate-700 font-medium">{item.note || '-'}</span>
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button 
-                            onClick={() => {
-                              setIsAddingFixed(true);
-                              setEditingFixedId(item.id);
-                              setFixedForm({ name: item.name, amount: item.amount, memo: item.note || '' });
-                            }}
-                            className="p-1 text-slate-400 hover:text-indigo-600"
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteFixed(item.id)}
-                            className="p-1 text-slate-400 hover:text-red-500"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+                       <td className="px-4 py-2 text-center">
+                        {!isClosed && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                                onClick={() => {
+                                  setIsAddingFixed(true);
+                                  setEditingFixedId(item.id);
+                                  setFixedForm({ name: item.name, billingRecipient: item.billingRecipient || '', amount: item.amount, memo: item.note || '' });
+                                }}
+                              className="p-1 text-slate-400 hover:text-indigo-600"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteFixed(item.id)}
+                              className="p-1 text-slate-400 hover:text-red-500"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -777,7 +839,7 @@ export default function Home() {
                         return (
                           <tr key={`emergency-${idx}`} className="hover:bg-indigo-50/10 transition-colors">
                             <td className="px-4 py-2.5 text-[12px] font-bold text-slate-800">{item.name}</td>
-                            <td className="px-4 py-2.5 text-[12px] text-slate-500"></td>
+                            <td className="px-4 py-2.5 text-[12px] text-slate-500">{item.chung || '-'}</td>
                             <td className="px-4 py-2.5 text-[12px] font-medium text-slate-500 text-right">{item.rate.toLocaleString()}원</td>
                             <td className="px-4 py-2.5 text-center">
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-50 text-[10px] font-bold text-red-600">{item.count}회</span>

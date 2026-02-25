@@ -1,18 +1,1 @@
-[
-  {
-    "name": "Server Maintenance",
-    "amount": 500000,
-    "memo": "Feb Payment",
-    "id": "32d1e7f7-cbc6-4158-840d-1ab3fb103063",
-    "createdAt": "2026-02-22T09:57:17.226Z",
-    "updatedAt": "2026-02-22T12:52:15.795Z"
-  },
-  {
-    "name": "Test",
-    "amount": 100000,
-    "memo": "",
-    "id": "b86cfd69-168a-4648-9c3d-32c926a29302",
-    "createdAt": "2026-02-22T10:08:38.983Z",
-    "updatedAt": "2026-02-22T10:08:38.983Z"
-  }
-]
+[]

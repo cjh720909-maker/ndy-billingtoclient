@@ -1,6 +1,6 @@
 'use server';
 
-import mysql from 'mysql2/promise';
+import dbPool from '@/lib/mysql';
 import iconv from 'iconv-lite';
 import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
@@ -311,89 +311,78 @@ export async function getInquiryBilling(params: {
   const { startDate, endDate, searchTerm } = params;
 
   try {
-    const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
-    try {
-      await connection.query("SET NAMES 'latin1'");
+    const [rows]: any[] = await dbPool.execute(
+      `SELECT IC_DATE, IC_NAME, IC_SO, IC_NAP, IC_TON, IC_KUM, IC_YO, IC_CHUNG, IC_UN, IC_MEMO 
+       FROM t_il_car 
+       WHERE IC_DATE >= ? AND IC_DATE <= ? 
+       ORDER BY IC_DATE ASC, IC_NAME ASC`,
+      [startDate, endDate]
+    );
 
-      const [rows]: any[] = await connection.execute(
-        'SELECT IC_DATE, IC_NAME, IC_SO, IC_NAP, IC_TON, IC_KUM, IC_YO, IC_CHUNG, IC_UN, IC_MEMO FROM t_il_car WHERE IC_DATE >= ? AND IC_DATE <= ? ORDER BY IC_DATE ASC, IC_NAME ASC',
-        [startDate, endDate]
+    const savedItemsMap = new Map<string, string>(); // key -> id
+    
+    const savedSettlements = await prisma.inquirySettlement.findMany({
+      where: { startDate, endDate }
+    });
+
+    savedSettlements.forEach(s => {
+      const key = `${s.date}_${s.name}_${s.so}_${s.nap}_${s.kum}`;
+      savedItemsMap.set(key, s.id);
+    });
+
+    const decode = (val: any) => {
+      if (!val) return '';
+      return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
+    };
+
+    const result = rows.map((row: any, index: number) => {
+      const decodedName = decode(row.IC_NAME);
+      const decodedSo = decode(row.IC_SO);
+      const decodedNap = decode(row.IC_NAP);
+      const decodedKum = Number(row.IC_KUM || 0);
+      const decodedDate = row.IC_DATE;
+      
+      const key = `${decodedDate}_${decodedName}_${decodedSo}_${decodedNap}_${decodedKum}`;
+      const savedId = savedItemsMap.get(key);
+      
+      return {
+        no: index + 1,
+        date: decodedDate,
+        name: decodedName,
+        so: decodedSo,
+        nap: decodedNap,
+        ton: decode(row.IC_TON),
+        kum: decodedKum,
+        yo: decode(row.IC_YO),
+        chung: decode(row.IC_CHUNG),
+        un: Number(row.IC_UN || 0),
+        memo: decode(row.IC_MEMO),
+        isRowSaved: !!savedId,
+        savedId: savedId || null
+      };
+    }).filter((row: any) => {
+      const hasKeyword = (text: string) => text.includes('회수') || text.includes('회송');
+      const isSpecialCase = hasKeyword(row.name) || hasKeyword(row.so) || hasKeyword(row.nap) || hasKeyword(row.memo);
+      if (row.kum === 0 && !isSpecialCase) return false;
+      
+      if (!searchTerm) return true;
+      const searchTerms = searchTerm.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      return searchTerms.some(term => 
+        row.name.includes(term) || 
+        row.so.includes(term) || 
+        row.nap.includes(term) ||
+        row.chung.includes(term)
       );
+    });
 
-      const savedItemsMap = new Map<string, string>(); // key -> id
-      try {
-        const targetStart = startDate;
-        const targetEnd = endDate;
-        
-        const savedSettlements = await prisma.inquirySettlement.findMany({
-          where: { startDate: targetStart, endDate: targetEnd }
-        });
-
-        savedSettlements.forEach(s => {
-          const key = `${s.date}_${s.name}_${s.so}_${s.nap}_${s.kum}`;
-          savedItemsMap.set(key, s.id);
-        });
-      } catch (e) {}
-
-      const decode = (val: any) => {
-        if (!val) return '';
-        return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
-      };
-
-      const result = rows.map((row: any, index: number) => {
-        const decodedName = decode(row.IC_NAME);
-        const decodedSo = decode(row.IC_SO);
-        const decodedNap = decode(row.IC_NAP);
-        const decodedKum = Number(row.IC_KUM || 0);
-        const decodedDate = row.IC_DATE;
-        
-        const key = `${decodedDate}_${decodedName}_${decodedSo}_${decodedNap}_${decodedKum}`;
-        const savedId = savedItemsMap.get(key);
-        
-        return {
-          no: index + 1,
-          date: decodedDate,
-          name: decodedName,
-          so: decodedSo,
-          nap: decodedNap,
-          ton: decode(row.IC_TON),
-          kum: decodedKum,
-          yo: decode(row.IC_YO),
-          chung: decode(row.IC_CHUNG),
-          un: Number(row.IC_UN || 0),
-          memo: decode(row.IC_MEMO),
-          isRowSaved: !!savedId,
-          savedId: savedId || null
-        };
-      }).filter((row: any) => {
-        // '회수' 또는 '회송' 키워드 포함 여부 확인
-        const hasKeyword = (text: string) => text.includes('회수') || text.includes('회송');
-        const isSpecialCase = hasKeyword(row.name) || hasKeyword(row.so) || hasKeyword(row.nap) || hasKeyword(row.memo);
-
-        // 0원 데이터 기본 제외하되, '회수'/'회송' 키워드가 포함된 경우는 표시
-        if (row.kum === 0 && !isSpecialCase) return false;
-        
-        if (!searchTerm) return true;
-        const searchTerms = searchTerm.split(',').map(t => t.trim()).filter(t => t.length > 0);
-        return searchTerms.some(term => 
-          row.name.includes(term) || 
-          row.so.includes(term) || 
-          row.nap.includes(term) ||
-          row.chung.includes(term)
-        );
-      });
-
-      return { 
-        success: true, 
-        data: result,
-        isSaved: await checkInquirySaved(startDate, endDate)
-      };
-    } finally {
-      await connection.end();
-    }
+    return { 
+      success: true, 
+      data: result,
+      isSaved: savedSettlements.length > 0
+    };
   } catch (error: any) {
     console.error('Failed to fetch inquiry billing:', error);
-    const errorMessage = error.code === 'ETIMEDOUT' ? 'MySQL 서버 연결 타임아웃 (네트워크 확인 필요)' : `DB 접속 실패: ${error.message}`;
+    const errorMessage = error.code === 'ETIMEDOUT' ? 'MySQL 서버 연결 타임아웃' : `DB 접속 실패: ${error.message}`;
     return { success: false, error: errorMessage };
   }
 }
@@ -403,10 +392,8 @@ export async function getInquiryBilling(params: {
  */
 async function checkInquirySaved(startDate: string, endDate: string) {
   try {
-    const targetStart = startDate;
-    const targetEnd = endDate;
     const count = await prisma.inquirySettlement.count({
-      where: { startDate: targetStart, endDate: targetEnd }
+      where: { startDate, endDate }
     });
     return count > 0;
   } catch (e) {
@@ -441,7 +428,6 @@ export async function saveInquirySettlements(params: {
     const targetStart = params.records[0].startDate;
     const targetEnd = params.records[0].endDate;
     
-    // 증분 저장 로직: 저장하려는 항목들과 키가 겹치는 기존 레코드만 지움
     const newKeys = params.records.map((r: any) => ({
       date: r.date,
       name: r.name,
@@ -451,7 +437,6 @@ export async function saveInquirySettlements(params: {
     }));
 
     await prisma.$transaction(async (tx) => {
-      // 겹치는 항목 삭제
       for (const k of newKeys) {
         await tx.inquirySettlement.deleteMany({
           where: {
@@ -466,7 +451,6 @@ export async function saveInquirySettlements(params: {
         });
       }
 
-      // 새 항목 추가
       await tx.inquirySettlement.createMany({
         data: params.records.map(r => ({
           startDate: targetStart,
@@ -502,16 +486,13 @@ export async function deleteInquirySettlements(params: {
   ids?: string[];
 }) {
   try {
-    const targetStart = params.startDate;
-    const targetEnd = params.endDate;
-
     if (params.ids && params.ids.length > 0) {
       await prisma.inquirySettlement.deleteMany({
         where: { id: { in: params.ids } }
       });
     } else {
       await prisma.inquirySettlement.deleteMany({
-        where: { startDate: targetStart, endDate: targetEnd }
+        where: { startDate: params.startDate, endDate: params.endDate }
       });
     }
 
@@ -524,15 +505,15 @@ export async function deleteInquirySettlements(params: {
 }
 
 /**
- * 긴급 출고 단가 조회
+ * 긴급 출고 단가 조회 (헬퍼)
  */
-async function getEmergencyRates(): Promise<Record<string, number>> {
+async function getEmergencyRates(): Promise<Record<string, { rate: number, chung: string }>> {
   try {
     const rates = await prisma.emergencyRate.findMany();
     return rates.reduce((acc, r) => {
-      acc[r.name] = r.rate;
+      acc[r.name] = { rate: r.rate, chung: r.chung };
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, { rate: number, chung: string }>);
   } catch (e) {
     return {};
   }
@@ -541,12 +522,12 @@ async function getEmergencyRates(): Promise<Record<string, number>> {
 /**
  * 긴급 출고 단가 업데이트
  */
-export async function updateEmergencyRate(name: string, rate: number) {
+export async function updateEmergencyRate(name: string, rate: number, chung: string) {
   try {
     await prisma.emergencyRate.upsert({
       where: { name },
-      update: { rate },
-      create: { name, rate }
+      update: { rate, chung },
+      create: { name, rate, chung }
     });
     return { success: true };
   } catch (error) {
@@ -557,7 +538,6 @@ export async function updateEmergencyRate(name: string, rate: number) {
 
 /**
  * 긴급 출고 조회 (t_balju 테이블)
- * 납품처명에 '긴급' 또는 '*'가 포함된 데이터를 조회하여 중복 제거 후 반환
  */
 export async function getEmergencyShipments(params: {
   startDate: string;
@@ -566,100 +546,71 @@ export async function getEmergencyShipments(params: {
   const { startDate, endDate } = params;
 
   try {
-    const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
-    try {
-      await connection.query("SET NAMES 'latin1'");
+    const [rows]: any[] = await dbPool.execute(
+      `SELECT B_C_CODE, B_C_NAME, B_MEMO, B_DATE, CB_ADDRESS 
+       FROM t_balju 
+       WHERE B_DATE >= ? AND B_DATE <= ? 
+       ORDER BY B_DATE DESC`,
+      [startDate, endDate]
+    );
 
-      // 인코딩 문제 회피를 위해 기간 내 전체 데이터를 가져와서 메모리에서 필터링
-      const [rows]: any[] = await connection.execute(
-        `SELECT B_C_CODE, B_C_NAME, B_MEMO, B_DATE, CB_ADDRESS 
-         FROM t_balju 
-         WHERE B_DATE >= ? AND B_DATE <= ? 
-         ORDER BY B_DATE DESC`,
-        [startDate, endDate]
-      );
+    const decode = (val: any) => {
+      if (!val) return '';
+      return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
+    };
 
-      const decode = (val: any) => {
-        if (!val) return '';
-        return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
-      };
+    const masterRates = await getEmergencyRates();
+    const groupedData: Record<string, any> = {};
+    const dateSets: Record<string, Set<string>> = {};
 
-      // 마스터 단가 로드
-      const masterRates = await getEmergencyRates();
-
-      // 중복 제거를 위한 그룹화 (납품처명 기준)
-      const groupedData: Record<string, any> = {};
-      const dateSets: Record<string, Set<string>> = {};
-
-      rows.forEach((row: any) => {
-        const name = decode(row.B_C_NAME);
-        const memo = decode(row.B_MEMO);
-        const address = decode(row.CB_ADDRESS);
-        const dateStr = row.B_DATE instanceof Date 
-          ? row.B_DATE.toISOString().split('T')[0] 
-          : (typeof row.B_DATE === 'string' ? row.B_DATE.substring(0, 10) : '');
-        
-        // '긴급' 또는 '*' 또는 '★' 포함 여부 체크
-        if (name.includes('긴급') || name.includes('*') || name.includes('★')) {
-          // [중요] 납품처명으로만 중복 체크 (사용자 요청: 코드는 무시)
-          if (!groupedData[name]) {
-            groupedData[name] = {
-              code: String(row.B_C_CODE || '').trim(),
-              name: name,
-              address: address,
-              memo: memo,
-              latestDate: dateStr,
-              rate: masterRates[name] || 0, // 저장된 단가 적용
-            };
-            dateSets[name] = new Set([dateStr]);
-          } else {
-            dateSets[name].add(dateStr);
-            // ORDER BY B_DATE DESC 이므로 처음 데이터가 이미 최신일이지만, 
-            // 혹시 모를 상황을 위해 날짜 비교 업데이트
-            if (dateStr > groupedData[name].latestDate) {
-              groupedData[name].latestDate = dateStr;
-            }
-            // 주소가 비어있었는데 이번엔 채워져 있다면 업데이트
-            if (!groupedData[name].address && address) {
-              groupedData[name].address = address;
-            }
-          }
+    rows.forEach((row: any) => {
+      const name = decode(row.B_C_NAME);
+      const memo = decode(row.B_MEMO);
+      const address = decode(row.CB_ADDRESS);
+      const dateStr = row.B_DATE instanceof Date 
+        ? row.B_DATE.toISOString().split('T')[0] 
+        : (typeof row.B_DATE === 'string' ? row.B_DATE.substring(0, 10) : '');
+      
+      if (name.includes('긴급') || name.includes('*') || name.includes('★')) {
+        if (!groupedData[name]) {
+          groupedData[name] = {
+            code: String(row.B_C_CODE || '').trim(),
+            name: name,
+            address: address,
+            memo: memo,
+            latestDate: dateStr,
+            rate: masterRates[name]?.rate || 0,
+            chung: masterRates[name]?.chung || '',
+          };
+          dateSets[name] = new Set([dateStr]);
+        } else {
+          dateSets[name].add(dateStr);
+          if (dateStr > groupedData[name].latestDate) groupedData[name].latestDate = dateStr;
+          if (!groupedData[name].address && address) groupedData[name].address = address;
         }
-      });
-
-      const result = Object.values(groupedData).map((item: any, index: number) => ({
-        no: index + 1,
-        ...item,
-        count: dateSets[item.name].size, // 날짜 기준 유니크 횟수
-        dates: Array.from(dateSets[item.name]).sort().reverse() // 최신순 정렬된 날짜 리스트
-      }));
-
-      let isSaved = false;
-      try {
-        const targetStart = startDate;
-        const targetEnd = endDate;
-        const count = await prisma.emergencySettlement.count({
-          where: { startDate: targetStart, endDate: targetEnd }
-        });
-        isSaved = count > 0;
-      } catch (e) {
-        isSaved = false;
       }
+    });
 
-      return { success: true, data: result, isSaved };
-    } finally {
-      await connection.end();
-    }
+    const result = Object.values(groupedData).map((item: any, index: number) => ({
+      no: index + 1,
+      ...item,
+      count: dateSets[item.name].size,
+      dates: Array.from(dateSets[item.name]).sort().reverse()
+    }));
+
+    const isSavedCount = await prisma.emergencySettlement.count({
+      where: { startDate, endDate }
+    });
+
+    return { success: true, data: result, isSaved: isSavedCount > 0 };
   } catch (error: any) {
     console.error('Failed to fetch emergency shipments:', error);
-    const errorMessage = error.code === 'ETIMEDOUT' ? 'MySQL 서버 연결 타임아웃' : `DB 접속 실패: ${error.message}`;
-    return { success: false, error: errorMessage };
+    return { success: false, error: error.message };
   }
 }
 
 /**
  * 통합 청구 요약 데이터 생성
- * t_balju 내역과 billing.json의 단가 정보를 결합하여 업체별 청합액 계산
  */
 export async function getMonthlyBillingSummary(params: {
   startDate: string;
@@ -668,105 +619,85 @@ export async function getMonthlyBillingSummary(params: {
   const { startDate, endDate } = params;
 
   try {
-    const connection = await mysql.createConnection({
-      uri: process.env.MYSQL_URL,
-      connectTimeout: 5000
+    const [rows]: any[] = await dbPool.execute(
+      `SELECT B_DATE, B_C_CODE, B_C_NAME, B_QTY, B_KG, B_MEMO 
+       FROM t_balju 
+       WHERE B_DATE >= ? AND B_DATE <= ? 
+       ORDER BY B_DATE ASC`,
+      [startDate, endDate]
+    );
+
+    const billingItems = await prisma.billingItem.findMany({
+      include: { rates: true }
     });
-    try {
-      await connection.query("SET NAMES 'latin1'");
 
-      // 1. 기간 내 모든 배차 데이터 조회
-      const [rows]: any[] = await connection.execute(
-        `SELECT B_DATE, B_C_CODE, B_C_NAME, B_QTY, B_KG, B_MEMO 
-         FROM t_balju 
-         WHERE B_DATE >= ? AND B_DATE <= ? 
-         ORDER BY B_DATE ASC`,
-        [startDate, endDate]
-      );
+    const decode = (val: any) => {
+      if (!val) return '';
+      return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
+    };
 
-      // 2. 청구 단가 데이터 로드 (DB에서)
-      const billingItems = await prisma.billingItem.findMany({
-        include: { rates: true }
+    const summary: Record<string, any> = {};
+
+    rows.forEach((row: any) => {
+      const date = row.B_DATE instanceof Date 
+        ? row.B_DATE.toISOString().split('T')[0] 
+        : (typeof row.B_DATE === 'string' ? row.B_DATE.substring(0, 10) : '');
+      const code = String(row.B_C_CODE || '').trim();
+      const name = decode(row.B_C_NAME);
+      
+      const billingItem = billingItems.find((item: any) => {
+        if (item.mergeCriteria === 'code') return item.code === code;
+        return item.name === name;
       });
 
-      const decode = (val: any) => {
-        if (!val) return '';
-        return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
-      };
+      if (!billingItem) return;
 
-      // 3. 데이터 집계 (업체별)
-      const summary: Record<string, any> = {};
+      const groupKey = billingItem.mergeCriteria === 'code' ? code : name;
+      const uniqueDayKey = `${date}_${groupKey}`;
 
-      rows.forEach((row: any) => {
-        const date = row.B_DATE instanceof Date 
-          ? row.B_DATE.toISOString().split('T')[0] 
-          : (typeof row.B_DATE === 'string' ? row.B_DATE.substring(0, 10) : '');
-        const code = String(row.B_C_CODE || '').trim();
-        const name = decode(row.B_C_NAME);
-        
-        // DB에서 해당 업체 설정 찾기
-        const billingItem = billingItems.find((item: any) => {
-          if (item.mergeCriteria === 'code') return item.code === code;
-          return item.name === name;
-        });
-
-        if (!billingItem) return;
-
-        const groupKey = billingItem.mergeCriteria === 'code' ? code : name;
-        const uniqueDayKey = `${date}_${groupKey}`;
-
-        if (!summary[groupKey]) {
-          summary[groupKey] = {
-            name: billingItem.name,
-            delivery: name, // 배송지명 (참고용)
-            cost: 0,
-            count: 0,
-            days: new Set(),
-            remarks: billingItem.note || '',
-            isGS: billingItem.mergeCriteria === 'code' && billingItem.name.includes('GS')
-          };
-        }
-
-        summary[groupKey].days.add(uniqueDayKey);
-      });
-
-      // 4. 금액 계산
-      const result = Object.values(summary).map((item: any) => {
-        const billingItem = billingItems.find((bi: any) => bi.name === item.name);
-
-        const count = item.days.size;
-        const rate = billingItem?.rates?.find((r: any) => r.validTo === null)?.amount || 0;
-        let cost = count * rate;
-
-        // [특수 로직] GS 정산 가산금 (12+3 등)
-        // 단순화를 위해 billing.json의 단가를 합산 금액으로 사용하고
-        // 비고란에 상세 내역 표시
-        if (item.isGS) {
-          const bonus = 30000; // GS 고정 가산금 (예시)
-          cost = count * (rate + bonus);
-          item.remarks = `${(rate/10000).toLocaleString()}+${(bonus/10000).toLocaleString()} (가산금 포함)`;
-        } else {
-          item.remarks = `${(rate/10000).toLocaleString()}만 * ${count}회`;
-        }
-
-        return {
-          delivery: item.delivery,
-          client: item.name,
-          cost: cost.toLocaleString(),
-          date: `${startDate} ~ ${endDate}`,
-          count: String(count),
-          remarks: item.remarks
+      if (!summary[groupKey]) {
+        summary[groupKey] = {
+          name: billingItem.name,
+          delivery: name,
+          cost: 0,
+          count: 0,
+          days: new Set(),
+          remarks: billingItem.note || '',
+          isGS: billingItem.mergeCriteria === 'code' && billingItem.name.includes('GS')
         };
-      });
+      }
 
-      return { success: true, data: result };
-    } finally {
-      await connection.end();
-    }
+      summary[groupKey].days.add(uniqueDayKey);
+    });
+
+    const result = Object.values(summary).map((item: any) => {
+      const billingItem = billingItems.find((bi: any) => bi.name === item.name);
+      const count = item.days.size;
+      const rate = billingItem?.rates?.find((r: any) => r.validTo === null)?.amount || 0;
+      let cost = count * rate;
+
+      if (item.isGS) {
+        const bonus = 30000;
+        cost = count * (rate + bonus);
+        item.remarks = `${(rate/10000).toLocaleString()}+${(bonus/10000).toLocaleString()} (가산금 포함)`;
+      } else {
+        item.remarks = `${(rate/10000).toLocaleString()}만 * ${count}회`;
+      }
+
+      return {
+        delivery: item.delivery,
+        client: item.name,
+        cost: cost.toLocaleString(),
+        date: `${startDate} ~ ${endDate}`,
+        count: String(count),
+        remarks: item.remarks
+      };
+    });
+
+    return { success: true, data: result };
   } catch (error: any) {
     console.error('Failed to get monthly billing summary:', error);
-    const errorMessage = error.code === 'ETIMEDOUT' ? 'MySQL 서버 연결 타임아웃' : `DB 접속 실패: ${error.message}`;
-    return { success: false, error: errorMessage };
+    return { success: false, error: error.message };
   }
 }
 
@@ -781,6 +712,7 @@ export async function saveEmergencySettlements(params: {
     count: number;
     rate: number;
     total: number;
+    chung?: string;
     memo?: string;
     dates?: string[];
   }>
@@ -794,12 +726,10 @@ export async function saveEmergencySettlements(params: {
     const targetEnd = params.records[0].endDate;
 
     await prisma.$transaction(async (tx) => {
-      // 1. 기존 데이터 삭제 (덮어쓰기)
       await tx.emergencySettlement.deleteMany({
         where: { startDate: targetStart, endDate: targetEnd }
       });
 
-      // 2. 새 레코드 생성
       await tx.emergencySettlement.createMany({
         data: params.records.map(record => ({
           name: record.name,
@@ -808,16 +738,16 @@ export async function saveEmergencySettlements(params: {
           count: record.count,
           rate: record.rate,
           total: record.total,
+          chung: record.chung || '',
           dates: record.dates || []
         }))
       });
 
-      // 3. 마스터 단가 동기화
       for (const r of params.records) {
         await tx.emergencyRate.upsert({
           where: { name: r.name },
-          update: { rate: r.rate },
-          create: { name: r.name, rate: r.rate }
+          update: { rate: r.rate, chung: r.chung || '' },
+          create: { name: r.name, rate: r.rate, chung: r.chung || '' }
         });
       }
     });
@@ -852,12 +782,10 @@ export async function deleteEmergencySettlements(params: {
           }
         });
 
-        // 마스터 단가도 삭제 (UI 초기화용)
         await tx.emergencyRate.deleteMany({
           where: { name: { in: params.names } }
         });
       } else {
-        // 기간 전체 삭제
         const targets = await tx.emergencySettlement.findMany({
           where: { startDate: targetStart, endDate: targetEnd },
           select: { name: true }
@@ -881,8 +809,9 @@ export async function deleteEmergencySettlements(params: {
     return { success: false, error: '정산 기록 삭제 중 오류가 발생했습니다.' };
   }
 }
+
 /**
- * 저장된 청구 정산 기록 조회 (지점 청구용)
+ * 저장된 청구 정산 기록 조회
  */
 export async function getSavedInquirySettlements(params: {
   startDate: string;
@@ -890,13 +819,10 @@ export async function getSavedInquirySettlements(params: {
   searchTerm?: string;
 }) {
   try {
-    const targetStart = params.startDate;
-    const targetEnd = params.endDate;
-
     const filtered = await prisma.inquirySettlement.findMany({
       where: {
-        startDate: targetStart,
-        endDate: targetEnd,
+        startDate: params.startDate,
+        endDate: params.endDate,
         ...(params.searchTerm ? {
           OR: [
             { name: { contains: params.searchTerm, mode: 'insensitive' } },
@@ -933,20 +859,23 @@ export async function getFixedSettlements() {
 }
 
 /**
- * 고정 비용 저장 (추가/수정)
+ * 고정 비용 저장
  */
 export async function saveFixedSettlement(params: {
   id?: string;
   name: string;
+  billingRecipient: string;
   amount: number;
   memo: string;
 }) {
+  console.log('Saving Fixed Settlement:', params);
   try {
     if (params.id) {
       await prisma.fixedSettlement.update({
         where: { id: params.id },
         data: {
           name: params.name,
+          billingRecipient: params.billingRecipient,
           amount: params.amount,
           note: params.memo
         }
@@ -955,6 +884,7 @@ export async function saveFixedSettlement(params: {
       await prisma.fixedSettlement.create({
         data: {
           name: params.name,
+          billingRecipient: params.billingRecipient,
           amount: params.amount,
           note: params.memo
         }

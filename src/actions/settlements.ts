@@ -1,7 +1,8 @@
 'use server';
 
-import mysql from 'mysql2/promise';
+import dbPool from '@/lib/mysql';
 import iconv from 'iconv-lite';
+import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
 
 interface GSPickingConfig {
@@ -200,47 +201,26 @@ export async function getIntegratedBillingSummary(params: {
     });
 
     // GS 진주 일요일 출고 데이터 및 고정비 결정
-    let finalGsJinju = { count: 0, totalAmount: 0 };
     let finalFixedCosts = fixedSettlements;
 
-    // 실시간 집계
-    try {
-      const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
-      try {
-        await connection.query("SET NAMES 'latin1'");
-        
-        const [rows]: any[] = await connection.execute(
-          `SELECT B_DATE, B_C_NAME FROM t_balju 
-           WHERE B_DATE >= ? AND B_DATE <= ?`,
-          [startDate, endDate]
-        );
-
-        const decode = (val: any) => {
-          if (!val) return '';
-          return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
-        };
-
-        const uniqueSundayDates = new Set<string>();
-        rows.forEach((row: any) => {
-          const name = decode(row.B_C_NAME);
-          const dateObj = new Date(row.B_DATE);
-          if (name.includes('진주') && dateObj.getDay() === 0) {
-            const dateStr = dateObj.toISOString().split('T')[0];
-            uniqueSundayDates.add(dateStr);
-          }
-        });
-
-        finalGsJinju = {
-          count: uniqueSundayDates.size,
-          totalAmount: uniqueSundayDates.size * 150000
-        };
-      } finally {
-        await connection.end();
+    // MySQL 실시간 집계 제거 -> 날짜 기반으로 일요일 개수 계산 (t_balju 조회 없음)
+    const startDateObj = new Date(startNum.toString().replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'));
+    const endDateObj = new Date(endNum.toString().replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'));
+    
+    let sundayCount = 0;
+    let currentDate = new Date(startDateObj);
+    
+    while (currentDate <= endDateObj) {
+      if (currentDate.getDay() === 0) { // 0 represents Sunday
+        sundayCount++;
       }
-    } catch (e) {
-      console.error('Failed to fetch GS Jinju data from MySQL:', e);
-      // MySQL 실패 시에도 나머지 데이터는 보여줄 수 있도록 에러만 기록하고 넘어감
+      currentDate.setDate(currentDate.getDate() + 1);
     }
+
+    const finalGsJinju = {
+      count: sundayCount,
+      totalAmount: sundayCount * 150000
+    };
 
     return {
       success: true,
@@ -253,7 +233,7 @@ export async function getIntegratedBillingSummary(params: {
         fixed: finalFixedCosts
       }
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to get integrated billing summary:', error);
     return { success: false, error: '데이터를 가져오는 중 오류가 발생했습니다.' };
   }
@@ -269,9 +249,7 @@ export async function getDailySettlements(params: {
 
   // GS 관련 타입인 경우 코드 기준 처리 (Release/Picking 모두 포함)
   const isGSType = type === 'gs' || type === 'gs-picking';
-  // GS 출고 정산만 파일 저장소 사용
-  const isGSReleaseType = type === 'gs';
-
+  
   try {
     // 0. 저장된 데이터 가져오기 (GS 관련 타입인 경우)
     let savedGSDataMap = new Map<string, any>();
@@ -284,191 +262,179 @@ export async function getDailySettlements(params: {
       });
     }
 
-    // MySQL 직접 연결 (Prisma의 인코딩 문제 회피)
-    const connection = await mysql.createConnection(process.env.MYSQL_URL as string);
+    // 2. [수정] 마스터 명칭 맵 구성을 위해 청구 비용 데이터 로드 (DB에서)
+    const billingItems = await prisma.billingItem.findMany();
+    const masterNames: Record<string, string> = {};
+
+    // 마스터 명칭 맵 구성 (코드 -> 이름)
+    billingItems.forEach((item: any) => {
+      if (item.code) {
+        masterNames[String(item.code).trim()] = item.name;
+      }
+    });
+
+    // 한글 변환 함수
+    const decode = (val: any) => {
+      if (!val) return '';
+      return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
+    };
+
+    // [중요] 자동 정산 필터링 (WhiteList) 및 마스터 명칭 맵 생성
+    let searchTerms: string[] = [];
+    let criteria: 'name' | 'code' = (type === 'gs' || type === 'gs-picking') ? 'code' : 'name';
     
-    try {
-      // DB가 latin1로 인식하더라도 실제 데이터는 EUC-KR인 경우를 위해 latin1 설정
-      await connection.query("SET NAMES 'latin1'");
-
-      // 1. 기간 내 모든 데이터를 가져와서 메모리에서 필터링
-      const [rows]: any[] = await connection.execute(
-        `SELECT 
-          b.B_DATE, b.B_C_CODE, b.B_C_NAME, b.B_P_NO, b.B_P_NAME, b.B_QTY, b.B_IN_QTY, b.B_KG, b.B_MEMO,
-          p.P_IPSU
-        FROM t_balju b
-        LEFT JOIN t_product p ON b.B_P_NO = p.P_CODE
-        WHERE b.B_DATE >= ? AND b.B_DATE <= ? 
-        ORDER BY b.B_DATE ASC, b.B_C_CODE ASC`,
-        [startDate, endDate]
-      );
-
-      // 한글 변환 함수
-      const decode = (val: any) => {
-        if (!val) return '';
-        return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
-      };
-
-      // [중요] 자동 정산 필터링 (WhiteList) 및 마스터 명칭 맵 생성
-      let searchTerms: string[] = [];
-      let criteria: 'name' | 'code' = (type === 'gs' || type === 'gs-picking') ? 'code' : 'name';
-      
-      // 2. [수정] 마스터 명칭 맵 구성을 위해 청구 비용 데이터 로드 (DB에서)
-      const billingItems = await prisma.billingItem.findMany();
-      const masterNames: Record<string, string> = {};
-
-      // 마스터 명칭 맵 구성 (코드 -> 이름)
-      billingItems.forEach((item: any) => {
-        if (item.code) {
-          masterNames[String(item.code).trim()] = item.name;
-        }
-      });
-
-      if (searchTerm) {
-        searchTerms = searchTerm.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
-      } else {
-        // [수정] 해당 타입의 기준(criteria)과 일치하는 마스터 항목만 추출
-        // 1일 출고 정산(daily)인 경우 '긴급' 항목 제외
-        searchTerms = billingItems
-          .filter((item: any) => {
-            const isCriteriaMatch = item.mergeCriteria === criteria;
-            if (type === 'daily' && isCriteriaMatch) {
-              return !item.name.includes('긴급');
-            }
-            return isCriteriaMatch;
-          })
-          .map((item: any) => (criteria === 'code' ? String(item.code || '') : String(item.name || '')).trim())
-          .filter((t) => t.length > 0);
-      }
-
-      // 데이터 가공 및 필터링
-      const groupedRows: { [key: string]: any } = {};
-
-      rows.forEach((curr: any) => {
-        const date = curr.B_DATE instanceof Date 
-          ? curr.B_DATE.toISOString().split('T')[0] 
-          : (typeof curr.B_DATE === 'string' ? curr.B_DATE.substring(0, 10) : '');
-        const code = String(curr.B_C_CODE || '').trim();
-        
-        // GS 타입인 경우 코드 기준으로 마스터 명칭 사용, 아니면 DB 명칭 사용
-        const name = (isGSType && masterNames[code]) ? masterNames[code] : decode(curr.B_C_NAME);
-        
-        const memo = decode(curr.B_MEMO);
-        
-        // [수정] 박스 수량 산출 식 적용: 출고수량(B_QTY) / 입수(B_IN_QTY) = 박스
-        const b_qty = Number(curr.B_QTY || 0);
-        const b_in_qty = Number(curr.B_IN_QTY || curr.P_IPSU || 1);
-        const boxes = b_qty / b_in_qty;
-
-        const weight = Number(curr.B_KG || 0);
-
-        // 필터링 적용
-        let matches = false;
-        const compareValue = isGSType ? code : name;
-
-        if (searchTerms.length > 0) {
-          matches = searchTerms.some((term: string) => {
-            const t = term.trim();
-            return isGSType ? code === t : compareValue.includes(t);
-          });
-        } else {
-          matches = true;
-        }
-        
-        if (matches) {
-          const groupKey = isGSType ? code : name;
-          const key = `${date}_${groupKey}`;
-          
-          if (!groupedRows[key]) {
-            groupedRows[key] = {
-              date: date,
-              code: code, 
-              name: name,
-              qty: 0, 
-              weight: 0,
-              remarks: '',
-              isSaved: false
-            };
+    if (searchTerm) {
+      searchTerms = searchTerm.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+    } else {
+      searchTerms = billingItems
+        .filter((item: any) => {
+          const isCriteriaMatch = item.mergeCriteria === criteria;
+          if (type === 'daily' && isCriteriaMatch) {
+            return !item.name.includes('긴급');
           }
-          
-          groupedRows[key].qty += boxes;
-          groupedRows[key].weight += weight;
-        }
-      });
-
-      // [정산 데이터 병합] 저장된 데이터(JSON)가 있으면 덮어쓰기 또는 추가 (GS 전용)
-      if (isGSType) {
-        // 1. 기존 그룹화 데이터 업데이트
-        Object.keys(groupedRows).forEach(key => {
-          const saved = savedGSDataMap.get(key);
-          if (saved) {
-            groupedRows[key] = {
-              ...groupedRows[key],
-              ...saved,
-              qty: Number(saved.qty),
-              weight: Number(saved.weight),
-              isSaved: true
-            };
-          }
-        });
-        
-        // 2. DB에는 없으나 저장된 데이터에만 있는 항목 추가 (기간 내)
-        savedGSDataMap.forEach((item, key) => {
-          if (!groupedRows[key]) {
-            // 검색어 필터링 적용
-            const compareValue = isGSType ? item.code : item.name;
-            let matches = false;
-            if (searchTerms.length > 0) {
-              matches = searchTerms.some((term: string) => {
-                const t = term.trim();
-                return isGSType ? item.code === t : String(compareValue).includes(t);
-              });
-            } else {
-              matches = true;
-            }
-
-            if (matches) {
-              groupedRows[key] = { 
-                ...item, 
-                qty: Number(item.qty),
-                weight: Number(item.weight),
-                isSaved: true 
-              };
-            }
-          }
-        });
-      }
-
-      const result = Object.values(groupedRows)
-        .sort((a: any, b: any) => {
-          if (a.date !== b.date) return a.date.localeCompare(b.date);
-          const sortKey = (type === 'gs' || type === 'gs-picking') ? 'code' : 'name';
-          return a[sortKey].localeCompare(b[sortKey]);
+          return isCriteriaMatch;
         })
-        .map((item: any, index: number) => ({
-          no: index + 1,
-          ...item,
-          // UI 표시 및 합계를 위해 소수점 2자리 유지 (데이터 정확성 확보)
-          qty: Math.round(item.qty * 100) / 100,
-          // 중량 올림 처리 (사용자 요청)
-          weight: Math.ceil(item.weight)
-        }));
-
-      // [저장 상태 확인] 일일 출고 정산(daily)인 경우 daily_summaries.json 확인
-      let isSaved = false;
-      if (type === 'daily') {
-        const summary = await prisma.dailySummary.findFirst({
-          where: { startDate, endDate }
-        });
-        isSaved = !!summary;
-      } else if (isGSType) {
-        isSaved = result.some((r: any) => r.isSaved);
-      }
-
-      return { success: true, data: result, isSaved };
-    } finally {
-      await connection.end();
+        .map((item: any) => (criteria === 'code' ? String(item.code || '') : String(item.name || '')).trim())
+        .filter((t) => t.length > 0);
     }
+
+    // 1. [최적화] DB 쿼리 레벨에서 날짜/코드/이름 단위로 그룹핑(Aggregation) 적용
+    let sqlQuery = `
+      SELECT 
+        b.B_DATE, 
+        b.B_C_CODE, 
+        b.B_C_NAME, 
+        SUM(IFNULL(b.B_QTY, 0) / COALESCE(NULLIF(b.B_IN_QTY, 0), NULLIF(p.P_IPSU, 0), 1)) AS TOTAL_BOXES,
+        SUM(IFNULL(b.B_KG, 0)) AS TOTAL_WEIGHT
+      FROM t_balju b
+      LEFT JOIN t_product p ON b.B_P_NO = p.P_CODE
+      WHERE b.B_DATE >= ? AND b.B_DATE <= ? 
+    `;
+
+    // searchTerm이나 명확한 필터(IN 구문)가 있다면 여기서 더 필터링 가능하지만, 
+    // EUC-KR 문자셋 변환 이슈를 안전하게 넘기기 위해 Grouping만 DB단에서 우선 수행하고 최종 필터링을 로직으로 처리.
+    sqlQuery += `
+      GROUP BY b.B_DATE, b.B_C_CODE, b.B_C_NAME
+      ORDER BY b.B_DATE ASC, b.B_C_CODE ASC
+    `;
+
+    const [rows]: any[] = await dbPool.execute(sqlQuery, [startDate, endDate]);
+
+    // 데이터 가공 및 필터링
+    const groupedRows: { [key: string]: any } = {};
+
+    rows.forEach((curr: any) => {
+      const date = curr.B_DATE instanceof Date 
+        ? curr.B_DATE.toISOString().split('T')[0] 
+        : (typeof curr.B_DATE === 'string' ? curr.B_DATE.substring(0, 10) : '');
+      const code = String(curr.B_C_CODE || '').trim();
+      
+      // GS 타입인 경우 코드 기준으로 마스터 명칭 사용, 아니면 DB 명칭 사용
+      const name = (isGSType && masterNames[code]) ? masterNames[code] : decode(curr.B_C_NAME);
+      const boxes = Number(curr.TOTAL_BOXES || 0);
+      const weight = Number(curr.TOTAL_WEIGHT || 0);
+
+      // 필터링 적용
+      let matches = false;
+      const compareValue = isGSType ? code : name;
+
+      if (searchTerms.length > 0) {
+        matches = searchTerms.some((term: string) => {
+          const t = term.trim();
+          return isGSType ? code === t : compareValue.includes(t);
+        });
+      } else {
+        matches = true;
+      }
+      
+      if (matches) {
+        const groupKey = isGSType ? code : name;
+        const key = `${date}_${groupKey}`;
+        
+        if (!groupedRows[key]) {
+          groupedRows[key] = {
+            date: date,
+            code: code, 
+            name: name,
+            qty: 0, 
+            weight: 0,
+            remarks: '',
+            isSaved: false
+          };
+        }
+        
+        groupedRows[key].qty += boxes;
+        groupedRows[key].weight += weight;
+      }
+    });
+
+    // [정산 데이터 병합] 저장된 데이터(JSON)가 있으면 덮어쓰기 또는 추가 (GS 전용)
+    if (isGSType) {
+      // 1. 기존 그룹화 데이터 업데이트
+      Object.keys(groupedRows).forEach(key => {
+        const saved = savedGSDataMap.get(key);
+        if (saved) {
+          groupedRows[key] = {
+            ...groupedRows[key],
+            ...saved,
+            qty: Number(saved.qty),
+            weight: Number(saved.weight),
+            isSaved: true
+          };
+        }
+      });
+      
+      // 2. DB에는 없으나 저장된 데이터에만 있는 항목 추가 (기간 내)
+      savedGSDataMap.forEach((item, key) => {
+        if (!groupedRows[key]) {
+          const compareValue = isGSType ? item.code : item.name;
+          let matches = false;
+          if (searchTerms.length > 0) {
+            matches = searchTerms.some((term: string) => {
+              const t = term.trim();
+              return isGSType ? item.code === t : String(compareValue).includes(t);
+            });
+          } else {
+            matches = true;
+          }
+
+          if (matches) {
+            groupedRows[key] = { 
+              ...item, 
+              qty: Number(item.qty),
+              weight: Number(item.weight),
+              isSaved: true 
+            };
+          }
+        }
+      });
+    }
+
+    const result = Object.values(groupedRows)
+      .sort((a: any, b: any) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        const sortKey = (type === 'gs' || type === 'gs-picking') ? 'code' : 'name';
+        return a[sortKey].localeCompare(b[sortKey]);
+      })
+      .map((item: any, index: number) => ({
+        no: index + 1,
+        ...item,
+        qty: Math.round(item.qty * 100) / 100,
+        weight: Math.ceil(item.weight)
+      }));
+
+    // [저장 상태 확인] 일일 출고 정산(daily)인 경우 확인
+    let isSaved = false;
+    if (type === 'daily') {
+      const summary = await prisma.dailySummary.findFirst({
+        where: { startDate, endDate }
+      });
+      isSaved = !!summary;
+    } else if (isGSType) {
+      isSaved = result.some((r: any) => r.isSaved);
+    }
+
+    return { success: true, data: result, isSaved };
   } catch (error) {
     console.error('Failed to fetch settlements:', error);
     return { success: false, error: '데이터를 가져오는 중 오류가 발생했습니다.' };

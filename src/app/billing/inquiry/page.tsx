@@ -12,109 +12,79 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { getInquiryBilling, saveInquirySettlements, deleteInquirySettlements } from '@/actions/billing';
+import { MonthSelector } from '@/components/MonthSelector';
+import { useSettlementStore } from '@/store/useSettlementStore';
+
+// 날짜 유틸리티: 순수 로컬 시간(KST) 기준으로 문자열 포맷팅
+const getKSTToday = () => {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
+  const kstGap = 9 * 60 * 60 * 1000; 
+  return new Date(utc + kstGap);
+};
+
+const formatDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const EMPTY_ARRAY: any[] = [];
 
 export default function BillingInquiryPage() {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [data, setData] = useState<any[]>([]);
+  const { inquiry, setInquiryState, syncDateAcrossPages } = useSettlementStore();
+  const { query, data: storeData, isSaved, hasSearched } = inquiry;
+  
+  const selectedMonthStr = query.selectedMonth;
+  const selectedMonth = new Date(selectedMonthStr);
+
+  const setSelectedMonth = (newDate: Date) => {
+    syncDateAcrossPages(newDate.toISOString());
+  };
+
+  const getBillingPeriod = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth() - 1, 26);
+    const end = new Date(date.getFullYear(), date.getMonth(), 25);
+    return { startDate: formatDate(start), endDate: formatDate(end) };
+  };
+
+  const { startDate, endDate } = React.useMemo(() => getBillingPeriod(selectedMonth), [selectedMonth]);
+
+  const searchTerm = query.searchTerm;
+  const setSearchTerm = (term: string) => setInquiryState({ query: { ...query, searchTerm: term } });
+  
+  const data = storeData || EMPTY_ARRAY;
+
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const getKSTToday = () => {
-    const now = new Date();
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
-    const kstGap = 9 * 60 * 60 * 1000; 
-    return new Date(utc + kstGap);
-  };
-
-  const formatDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  // 초기 날짜 설정 및 상태 복구
-  useEffect(() => {
-    const savedFilter = sessionStorage.getItem('billing-inquiry-filter');
-    const savedData = sessionStorage.getItem('billing-inquiry-data');
-    
-    if (savedFilter) {
-      const { start, end, term, isSaved: savedIsSaved } = JSON.parse(savedFilter);
-      setStartDate(start);
-      setEndDate(end);
-      setSearchTerm(term);
-      setIsSaved(!!savedIsSaved);
-      
-      if (savedData) {
-        setData(JSON.parse(savedData));
-      } else {
-        fetchData(start, end, term);
-      }
-    } else {
-      const today = getKSTToday();
-      const startStr = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-      const endStr = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-      
-      setStartDate(startStr);
-      setEndDate(endStr);
-      fetchData(startStr, endStr, '');
-    }
-  }, []);
-
-  const fetchData = async (start: string, end: string, term: string) => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fetchData = React.useCallback(async (start: string, end: string, term: string) => {
     setLoading(true);
     const result = await getInquiryBilling({ startDate: start, endDate: end, searchTerm: term });
     if (result.success && result.data) {
-      setData(result.data);
-      setIsSaved(!!result.isSaved);
+      setInquiryState({ data: result.data, isSaved: !!result.isSaved, hasSearched: true });
       setSelectedIds(new Set());
-      sessionStorage.setItem('billing-inquiry-filter', JSON.stringify({ start, end, term, isSaved: result.isSaved }));
-      sessionStorage.setItem('billing-inquiry-data', JSON.stringify(result.data));
     } else {
-      setData([]);
-      setIsSaved(false);
+      setInquiryState({ data: [], isSaved: false, hasSearched: true });
     }
     setLoading(false);
-  };
+  }, []);
+
+  // 스토어에 데이터가 없거나 처음 진입 시 조회
+  useEffect(() => {
+    if (!hasSearched) {
+      fetchData(startDate, endDate, searchTerm);
+    }
+  }, [hasSearched, startDate, endDate, searchTerm, fetchData]);
 
   const handleSearch = () => {
+    setInquiryState({ isSaved: false });
     fetchData(startDate, endDate, searchTerm);
-  };
-
-  const setMonthCurrent = () => {
-    const today = getKSTToday();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const start = formatDate(firstDay);
-    const end = formatDate(today);
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
-  };
-
-  const setMonthPrevious = () => {
-    const today = getKSTToday();
-    const firstDayPrev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0); 
-    const start = formatDate(firstDayPrev);
-    const end = formatDate(lastDayPrev);
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
-  };
-
-  const setPayCycleRange = () => {
-    const today = getKSTToday();
-    const start = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-    const end = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
   };
 
   const toggleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,27 +173,11 @@ export default function BillingInquiryPage() {
     <div className="space-y-2">
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-1.5 px-4 sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-indigo-400 focus-within:bg-white transition-all">
-              <input 
-                type="date" 
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" 
-              />
-              <ArrowRight size={12} className="text-slate-300" />
-              <input 
-                type="date" 
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" 
-              />
-            </div>
-            <div className="flex gap-1">
-              <button onClick={setMonthCurrent} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">당월</button>
-              <button onClick={setMonthPrevious} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">전월</button>
-              <button onClick={setPayCycleRange} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">25일</button>
-            </div>
+          <div className="flex items-center gap-3">
+            <MonthSelector currentDate={selectedMonth} onChange={setSelectedMonth} />
+            <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+              {startDate} ~ {endDate}
+            </span>
           </div>
 
           <div className="flex-1 min-w-[200px] relative">
@@ -247,8 +201,12 @@ export default function BillingInquiryPage() {
               {loading ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={13} />} 조회
             </button>
             <button 
-              onClick={() => {setSearchTerm(''); setMonthCurrent();}}
-              className="p-1 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200 transition-all"
+              onClick={() => {
+                const nowKST = getKSTToday();
+                syncDateAcrossPages(nowKST.toISOString());
+                setInquiryState({ query: { selectedMonth: nowKST.toISOString(), searchTerm: '' }, hasSearched: false });
+              }}
+              className="p-1 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200 transition-all font-bold"
               title="초기화"
             >
               <RotateCcw size={14} />

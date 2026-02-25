@@ -11,78 +11,71 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { getDailySettlements, saveGSSettlements, saveGSSummary } from '@/actions/settlements';
+import { MonthSelector } from '@/components/MonthSelector';
+import { useSettlementStore } from '@/store/useSettlementStore';
+
+// 날짜 유틸리티: 순수 로컬 시간(KST) 기준으로 문자열 포맷팅
+const getKSTToday = () => {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
+  const kstGap = 9 * 60 * 60 * 1000; 
+  return new Date(utc + kstGap);
+};
+
+const formatDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const EMPTY_ARRAY: any[] = [];
 
 export default function GSReleaseSettlementPage() {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [data, setData] = useState<any[]>([]); // 초기엔 빈 상태
+  const { gs, setGsState, syncDateAcrossPages } = useSettlementStore();
+  const { query, data: storeData, isSaved: isSavedData, hasSearched } = gs;
+
+  const selectedMonthStr = query.selectedMonth;
+  const selectedMonth = new Date(selectedMonthStr);
+
+  const setSelectedMonth = (newDate: Date) => {
+    syncDateAcrossPages(newDate.toISOString());
+  };
+
+  const getBillingPeriod = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth() - 1, 26);
+    const end = new Date(date.getFullYear(), date.getMonth(), 25);
+    return { startDate: formatDate(start), endDate: formatDate(end) };
+  };
+
+  const { startDate, endDate } = React.useMemo(() => getBillingPeriod(selectedMonth), [selectedMonth]);
+
+  const searchTerm = query.searchTerm;
+  const setSearchTerm = (term: string) => setGsState({ query: { ...query, searchTerm: term } });
+  
+  const data = storeData || EMPTY_ARRAY;
+
   const [loading, setLoading] = useState(false);
-  const [totals, setTotals] = useState({ qty: 0, weight: 0 });
-  const [isSavedData, setIsSavedData] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   
   // 편집 상태 관리 (key: date_code, value: 수정된 필드들)
   const [editState, setEditState] = useState<Record<string, any>>({});
 
-  // 날짜 유틸리티: 순수 로컬 시간(KST) 기준으로 문자열 포맷팅
-  const getKSTToday = () => {
-    const now = new Date();
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
-    const kstGap = 9 * 60 * 60 * 1000; 
-    return new Date(utc + kstGap);
-  };
-
-  const formatDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  // 초기 날짜 설정 및 상태 복구
-  useEffect(() => {
-    // sessionStorage에서 이전 상태 복구
-    const savedFilter = sessionStorage.getItem('gs-release-filter');
-    const savedData = sessionStorage.getItem('gs-release-data');
-    const savedIsSaved = sessionStorage.getItem('gs-release-isSaved');
-    
-    if (savedFilter) {
-      const { start, end, term } = JSON.parse(savedFilter);
-      setStartDate(start);
-      setEndDate(end);
-      setSearchTerm(term);
-      
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        setData(parsedData);
-        const qSum = parsedData.reduce((acc: number, cur: any) => acc + Number(String(cur.qty).replace(/,/g, '')), 0);
-        const wSum = parsedData.reduce((acc: number, cur: any) => acc + Number(String(cur.weight).replace(/,/g, '')), 0);
-        setTotals({ qty: qSum, weight: wSum });
-        setIsSavedData(savedIsSaved === 'true');
-      } else {
-        fetchData(start, end, term);
-      }
-    } else {
-      const today = getKSTToday();
-      const startStr = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-      const endStr = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-      
-      setStartDate(startStr);
-      setEndDate(endStr);
-      
-      // 페이지 진입 시 자동 조회
-      fetchData(startStr, endStr, '');
+  const totals = React.useMemo(() => {
+    if (data.length > 0) {
+      const qSum = data.reduce((acc: number, cur: any) => acc + Number(String(cur.qty).replace(/,/g, '')), 0);
+      const wSum = data.reduce((acc: number, cur: any) => acc + Number(String(cur.weight).replace(/,/g, '')), 0);
+      return { qty: qSum, weight: wSum };
     }
-  }, []);
+    return { qty: 0, weight: 0 };
+  }, [data]);
 
-  const fetchData = async (start: string, end: string, term: string) => {
+  const fetchData = useCallback(async (start: string, end: string, term: string) => {
     setLoading(true);
     setHasChanges(false);
     setEditState({});
 
-    // GS출고정산 타입으로 요청 (코드 기준 그룹화 및 필터링)
     const result = await getDailySettlements({ 
       startDate: start, 
       endDate: end, 
@@ -91,26 +84,19 @@ export default function GSReleaseSettlementPage() {
     });
     
     if (result.success && result.data) {
-      setData(result.data);
-      setIsSavedData(!!result.isSaved);
-      
-      const qSum = result.data.reduce((acc: number, cur: any) => acc + Number(String(cur.qty).replace(/,/g, '')), 0);
-      const wSum = result.data.reduce((acc: number, cur: any) => acc + Number(String(cur.weight).replace(/,/g, '')), 0);
-      setTotals({ qty: qSum, weight: wSum });
-      
-      // 상태 저장
-      sessionStorage.setItem('gs-release-filter', JSON.stringify({ start, end, term }));
-      sessionStorage.setItem('gs-release-data', JSON.stringify(result.data));
-      sessionStorage.setItem('gs-release-isSaved', String(!!result.isSaved));
+      setGsState({ data: result.data, isSaved: !!result.isSaved, hasSearched: true });
     } else {
-      setData([]);
-      setTotals({ qty: 0, weight: 0 });
-      setIsSavedData(false);
-      sessionStorage.removeItem('gs-release-data');
-      sessionStorage.removeItem('gs-release-isSaved');
+      setGsState({ data: [], isSaved: false, hasSearched: true });
     }
     setLoading(false);
-  };
+  }, [setGsState]);
+
+  // 스토어에 데이터가 없거나 처음 진입 시 조회
+  useEffect(() => {
+    if (!hasSearched) {
+      fetchData(startDate, endDate, searchTerm);
+    }
+  }, [hasSearched, startDate, endDate, searchTerm, fetchData]);
 
   const handleSave = async () => {
     if (data.length === 0) return;
@@ -133,7 +119,7 @@ export default function GSReleaseSettlementPage() {
     });
     
     if (result.success) {
-      setIsSavedData(true);
+      setGsState({ isSaved: true });
       setHasChanges(false);
       alert('요약 정산 정보가 저장되었습니다.');
       fetchData(startDate, endDate, searchTerm);
@@ -145,43 +131,8 @@ export default function GSReleaseSettlementPage() {
 
   // 조회 버튼 클릭 시 호출
   const handleSearch = () => {
+    setGsState({ isSaved: false });
     fetchData(startDate, endDate, searchTerm);
-  };
-
-  // 당월: 이번 달 1일 ~ 오늘
-  const setMonthCurrent = (triggerSearch = true) => {
-    const today = getKSTToday();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const start = formatDate(firstDay);
-    const end = formatDate(today);
-    
-    setStartDate(start);
-    setEndDate(end);
-    if (triggerSearch) fetchData(start, end, searchTerm);
-  };
-
-  // 전월: 지난 달 1일 ~ 지난 달 말일
-  const setMonthPrevious = () => {
-    const today = getKSTToday();
-    const firstDayPrev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0); 
-    const start = formatDate(firstDayPrev);
-    const end = formatDate(lastDayPrev);
-    
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
-  };
-
-  // 25일 기준: 전월 26일 ~ 당월 25일
-  const setPayCycleRange = () => {
-    const today = getKSTToday();
-    const start = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-    const end = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-    
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end, searchTerm);
   };
 
   // 값 변경 핸들러
@@ -195,9 +146,8 @@ export default function GSReleaseSettlementPage() {
         [field]: value
       }
     }));
-    
     // data 상태에도 반영하여 즉시 UI 업데이트 (입력 반응성)
-    setData(prev => prev.map(item => {
+    const newData = data.map(item => {
       if (item.date === date && item.code === code) {
         return {
           ...item,
@@ -205,7 +155,8 @@ export default function GSReleaseSettlementPage() {
         };
       }
       return item;
-    }));
+    });
+    setGsState({ data: newData });
     
     setHasChanges(true);
   };
@@ -334,28 +285,12 @@ export default function GSReleaseSettlementPage() {
       {/* Ultra-Compact Search Filter Bar */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-1.5 px-4 sticky top-0 z-40">
         <div className="flex items-center justify-between">
-          {/* Date Picker Range */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-indigo-400 focus-within:bg-white transition-all">
-              <input 
-                type="date" 
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" 
-              />
-              <ArrowRight size={12} className="text-slate-300" />
-              <input 
-                type="date" 
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[110px] outline-none" 
-              />
-            </div>
-            <div className="flex gap-1">
-              <button onClick={() => setMonthCurrent()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">당월</button>
-              <button onClick={() => setMonthPrevious()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">전월</button>
-              <button onClick={() => setPayCycleRange()} className="px-1.5 py-1 bg-white text-slate-500 text-[10px] font-bold rounded border border-slate-200 hover:bg-slate-50 transition-colors">25일</button>
-            </div>
+          {/* Date Picker Range (MonthSelector) */}
+          <div className="flex items-center gap-3">
+            <MonthSelector currentDate={selectedMonth} onChange={setSelectedMonth} />
+            <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+              {startDate} ~ {endDate}
+            </span>
           </div>
 
           {/* Action Buttons */}
@@ -388,14 +323,9 @@ export default function GSReleaseSettlementPage() {
 
             <button 
               onClick={() => {
-                const today = getKSTToday();
-                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                const start = formatDate(firstDay);
-                const end = formatDate(today);
-                setStartDate(start);
-                setEndDate(end);
-                setSearchTerm('');
-                fetchData(start, end, '');
+                const nowKST = getKSTToday();
+                syncDateAcrossPages(nowKST.toISOString());
+                setGsState({ query: { selectedMonth: nowKST.toISOString(), searchTerm: '' }, hasSearched: false });
               }}
               className="p-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-md hover:bg-slate-200 transition-all font-bold"
               title="초기화"

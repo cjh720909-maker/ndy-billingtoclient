@@ -17,128 +17,82 @@ import {
   MapPin,
 } from 'lucide-react';
 import { getEmergencyShipments, saveEmergencySettlements, updateEmergencyRate, deleteEmergencySettlements } from '@/actions/billing';
+import { MonthSelector } from '@/components/MonthSelector';
+import { useSettlementStore } from '@/store/useSettlementStore';
+
+// 날짜 유틸리티: 순수 로컬 시간(KST) 기준으로 문자열 포맷팅
+const getKSTToday = () => {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
+  const kstGap = 9 * 60 * 60 * 1000; 
+  return new Date(utc + kstGap);
+};
+
+const formatDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const EMPTY_ARRAY: any[] = [];
 
 export default function EmergencyShipmentPage() {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [data, setData] = useState<any[]>([]);
+  const { emergency, setEmergencyState, syncDateAcrossPages } = useSettlementStore();
+  const { query, data: storeData, isSaved, hasSearched } = emergency;
+
+  const selectedMonthStr = query.selectedMonth;
+  const selectedMonth = new Date(selectedMonthStr);
+
+  const setSelectedMonth = (newDate: Date) => {
+    syncDateAcrossPages(newDate.toISOString());
+  };
+
+  const getBillingPeriod = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth() - 1, 26);
+    const end = new Date(date.getFullYear(), date.getMonth(), 25);
+    return { startDate: formatDate(start), endDate: formatDate(end) };
+  };
+
+  const { startDate, endDate } = React.useMemo(() => getBillingPeriod(selectedMonth), [selectedMonth]);
+
+  const data = storeData || EMPTY_ARRAY;
+  
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isSaved, setIsSaved] = useState(false); // 저장 상태 추가
   
   // 모달 관련 상태
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false); // 삭제 모달 추가
   const [saving, setSaving] = useState(false);
 
-  // 날짜 유틸리티: 순수 로컬 시간(KST) 기준으로 문자열 포맷팅
-  const getKSTToday = () => {
-    const now = new Date();
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60 * 1000); 
-    const kstGap = 9 * 60 * 60 * 1000; 
-    return new Date(utc + kstGap);
-  };
-
-  const formatDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  // 초기 날짜 설정 및 상태 복구
-  useEffect(() => {
-    // sessionStorage에서 이전 상태 복구
-    const savedFilter = sessionStorage.getItem('emergency-shipment-filter');
-    const savedData = sessionStorage.getItem('emergency-shipment-data');
-    
-    if (savedFilter) {
-      const { start, end } = JSON.parse(savedFilter);
-      setStartDate(start);
-      setEndDate(end);
-      
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        setData(parsedData);
-      } else {
-        fetchData(start, end);
-      }
-    } else {
-      const today = getKSTToday();
-      const startStr = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-      const endStr = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-      
-      setStartDate(startStr);
-      setEndDate(endStr);
-      
-      // 페이지 진입 시 자동 조회
-      fetchData(startStr, endStr);
-    }
-  }, []);
-
-  const fetchData = async (start: string, end: string) => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fetchData = React.useCallback(async (start: string, end: string) => {
     setLoading(true);
     try {
       const result = await getEmergencyShipments({ startDate: start, endDate: end });
       if (result.success) {
-        setData(result.data || []);
-        setIsSaved(!!result.isSaved); // 저장 상태 반영
+        setEmergencyState({ data: result.data || [], isSaved: !!result.isSaved, hasSearched: true });
         setSelectedIds(new Set()); // 데이터 갱신 시 선택 초기화
-        
-        // 상태 저장
-        sessionStorage.setItem('emergency-shipment-filter', JSON.stringify({ start: start, end: end }));
-        sessionStorage.setItem('emergency-shipment-data', JSON.stringify(result.data || []));
+      } else {
+        setEmergencyState({ data: [], isSaved: false, hasSearched: true });
       }
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // 스토어에 데이터가 없거나 처음 진입 시 조회
+  useEffect(() => {
+    if (!hasSearched) {
+      fetchData(startDate, endDate);
+    }
+  }, [hasSearched, startDate, endDate, fetchData]);
 
   const handleSearch = () => {
-    fetchData(startDate, endDate);
-  };
-
-  // 퀵 버튼 함수들
-  const setMonthCurrent = () => {
-    const today = getKSTToday();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const start = formatDate(firstDay);
-    const end = formatDate(today);
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end);
-  };
-
-  const setMonthPrevious = () => {
-    const today = getKSTToday();
-    const firstDayPrev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastDayPrev = new Date(today.getFullYear(), today.getMonth(), 0);
-    const start = formatDate(firstDayPrev);
-    const end = formatDate(lastDayPrev);
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end);
-  };
-
-  const setPayCycleRange = () => {
-    const today = getKSTToday();
-    const startStr = formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 26));
-    const endStr = formatDate(new Date(today.getFullYear(), today.getMonth(), 25));
-    setStartDate(startStr);
-    setEndDate(endStr);
-    fetchData(startStr, endStr);
-  };
-
-  const resetFilters = () => {
-    const today = getKSTToday();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const start = formatDate(firstDay);
-    const end = formatDate(today);
-    setStartDate(start);
-    setEndDate(end);
-    fetchData(start, end);
+    setSelectedMonth(getKSTToday());
   };
 
   const toggleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,9 +116,18 @@ export default function EmergencyShipmentPage() {
   // 대기 단가 수정 핸들러 (메모리 상태 업데이트)
   const handleRateChange = (name: string, value: string) => {
     const numericValue = parseInt(value) || 0;
-    setData(prev => prev.map(item => 
+    const newData = data.map(item => 
       item.name === name ? { ...item, rate: numericValue } : item
-    ));
+    );
+    setEmergencyState({ data: newData });
+  };
+
+  // 청구처 수정 핸들러
+  const handleChungChange = (name: string, value: string) => {
+    const newData = data.map(item => 
+      item.name === name ? { ...item, chung: value } : item
+    );
+    setEmergencyState({ data: newData });
   };
 
   // 저장 버튼 클릭 시 (단가 있는 항목 자동 선택)
@@ -211,6 +174,7 @@ export default function EmergencyShipmentPage() {
           count: item.count,
           rate: item.rate,
           total: item.count * item.rate,
+          chung: item.chung,
           memo: (item.memo ? `${item.memo} ` : '') + (item.dates ? `[${item.dates.map((d: string) => {
             const parts = d.split('-');
             if (parts.length < 3) return d;
@@ -221,9 +185,9 @@ export default function EmergencyShipmentPage() {
       });
 
       if (saveResult.success) {
-        // 2. 마스터 단가 동시에 업데이트
+        // 2. 마스터 단가 및 청구처 동시에 업데이트
         await Promise.all(selectedRecords.map(item => 
-          updateEmergencyRate(item.name, item.rate)
+          updateEmergencyRate(item.name, item.rate, item.chung || '')
         ));
 
         alert('정산 기록 및 마스터 단가가 저장되었습니다.');
@@ -280,28 +244,10 @@ export default function EmergencyShipmentPage() {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus-within:border-amber-400 focus-within:bg-white transition-all shadow-inner">
-                <Calendar size={14} className="text-slate-400" />
-                <input 
-                  type="date" 
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[120px] outline-none font-bold" 
-                />
-                <ArrowRight size={12} className="text-slate-300" />
-                <input 
-                  type="date" 
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-transparent border-none text-[12px] text-slate-700 focus:ring-0 w-[120px] outline-none font-bold" 
-                />
-              </div>
-              
-              <div className="flex gap-1">
-                <button onClick={setMonthCurrent} className="px-2.5 py-1.5 text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-amber-400 hover:text-amber-600 transition-all shadow-sm">당월</button>
-                <button onClick={setMonthPrevious} className="px-2.5 py-1.5 text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-amber-400 hover:text-amber-600 transition-all shadow-sm">전월</button>
-                <button onClick={setPayCycleRange} className="px-2.5 py-1.5 text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-amber-400 hover:text-amber-600 transition-all shadow-sm">25일 기준</button>
-              </div>
+              <MonthSelector currentDate={selectedMonth} onChange={setSelectedMonth} />
+              <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
+                {startDate} ~ {endDate}
+              </span>
             </div>
 
             <div className="flex gap-2">
@@ -318,7 +264,11 @@ export default function EmergencyShipmentPage() {
                 조회
               </button>
               <button 
-                onClick={resetFilters}
+                onClick={() => {
+                  const nowKST = getKSTToday();
+                  syncDateAcrossPages(nowKST.toISOString());
+                  setEmergencyState({ query: { selectedMonth: nowKST.toISOString(), searchTerm: '' }, hasSearched: false });
+                }}
                 className="p-2 bg-slate-100 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-200 transition-all"
                 title="초기화"
               >
@@ -400,6 +350,7 @@ export default function EmergencyShipmentPage() {
                   <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">주소</th>
                   <th className="w-16 px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">횟수</th>
                   <th className="w-24 px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">단가</th>
+                  <th className="w-28 px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">청구처</th>
                   <th className="w-28 px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">총 금액</th>
                   <th className="w-60 px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">날짜</th>
                   <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">비고</th>
@@ -475,6 +426,21 @@ export default function EmergencyShipmentPage() {
                           </div>
                         )}
                       </td>
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        {isSelected ? (
+                          <input 
+                            type="text" 
+                            value={row.chung || ''}
+                            onChange={(e) => handleChungChange(row.name, e.target.value)}
+                            className="w-full px-2 py-1 text-[12px] font-bold border border-indigo-200 rounded bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-center text-slate-700"
+                            placeholder="미설정"
+                          />
+                        ) : (
+                          <div className="text-center text-[12px] text-slate-500 font-medium truncate max-w-[100px] mx-auto">
+                            {row.chung || '-'}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <span className={`text-[13px] font-black ${totalAmount > 0 ? 'text-slate-900' : 'text-slate-300'}`}>
                           {totalAmount > 0 ? totalAmount.toLocaleString() : '-'}
@@ -537,6 +503,7 @@ export default function EmergencyShipmentPage() {
                       <th className="px-4 py-2 font-bold text-left">납품처명</th>
                       <th className="px-4 py-2 font-bold text-center">횟수</th>
                       <th className="px-4 py-2 font-bold text-right">입력 단가</th>
+                      <th className="px-4 py-2 font-bold text-center">청구처</th>
                       <th className="px-4 py-2 font-bold text-right">총액</th>
                     </tr>
                   </thead>
@@ -548,6 +515,9 @@ export default function EmergencyShipmentPage() {
                         <td className="px-4 py-3 text-right text-slate-900 font-bold">
                           {item.rate?.toLocaleString()}원
                         </td>
+                        <td className="px-4 py-3 text-center text-slate-600 font-bold">
+                          {item.chung || '-'}
+                        </td>
                         <td className="px-4 py-3 text-right font-black text-indigo-600">
                           {(item.count * (item.rate || 0)).toLocaleString()}원
                         </td>
@@ -556,7 +526,7 @@ export default function EmergencyShipmentPage() {
                   </tbody>
                   <tfoot className="bg-slate-50/80 border-t border-slate-100">
                     <tr className="font-black text-slate-900">
-                      <td colSpan={3} className="px-4 py-3 text-right text-indigo-600">최종 청구 총액</td>
+                      <td colSpan={4} className="px-4 py-3 text-right text-indigo-600">최종 청구 총액</td>
                       <td className="px-4 py-3 text-right text-[15px] text-indigo-700">
                         {data.filter(item => selectedIds.has(item.name))
                           .reduce((acc, curr) => acc + (curr.count * (curr.rate || 0)), 0)
