@@ -296,7 +296,7 @@ export default function BillingInquiryPage() {
                   return (
                     <tr 
                       key={i} 
-                      className={`hover:bg-slate-50/80 transition-colors group cursor-pointer ${isSelected ? 'bg-indigo-50/30' : (row.isRowSaved ? 'bg-emerald-50/30' : '')}`}
+                      className={`hover:bg-slate-50/80 transition-colors group cursor-pointer ${isSelected ? 'bg-indigo-50/30' : (row.isRowSaved ? (row.isGhost ? 'bg-rose-50/50' : 'bg-emerald-50/30') : '')}`}
                       onClick={() => toggleSelectRow(row.no)}
                     >
                       <td className="px-4 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -313,8 +313,8 @@ export default function BillingInquiryPage() {
                         <div className="flex items-center gap-1.5">
                           {row.no}
                           {row.isRowSaved && (
-                            <span className="text-[9px] font-bold px-1 bg-emerald-100 text-emerald-600 rounded-sm whitespace-nowrap">
-                              완료
+                            <span className={`text-[9px] font-bold px-1 rounded-sm whitespace-nowrap ${row.isGhost ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                              {row.isGhost ? '원본삭제' : '완료'}
                             </span>
                           )}
                         </div>

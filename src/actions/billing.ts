@@ -320,6 +320,7 @@ export async function getInquiryBilling(params: {
     );
 
     const savedItemsMap = new Map<string, string>(); // key -> id
+    const savedKeys = new Set<string>();
     
     const savedSettlements = await prisma.inquirySettlement.findMany({
       where: { startDate, endDate }
@@ -328,6 +329,7 @@ export async function getInquiryBilling(params: {
     savedSettlements.forEach(s => {
       const key = `${s.date}_${s.name}_${s.so}_${s.nap}_${s.kum}`;
       savedItemsMap.set(key, s.id);
+      savedKeys.add(key);
     });
 
     const decode = (val: any) => {
@@ -335,7 +337,7 @@ export async function getInquiryBilling(params: {
       return iconv.decode(Buffer.from(val, 'binary'), 'euckr').trim();
     };
 
-    const result = rows.map((row: any, index: number) => {
+    const parsedRows = rows.map((row: any) => {
       const decodedName = decode(row.IC_NAME);
       const decodedSo = decode(row.IC_SO);
       const decodedNap = decode(row.IC_NAP);
@@ -345,8 +347,11 @@ export async function getInquiryBilling(params: {
       const key = `${decodedDate}_${decodedName}_${decodedSo}_${decodedNap}_${decodedKum}`;
       const savedId = savedItemsMap.get(key);
       
+      if (savedId) {
+        savedKeys.delete(key);
+      }
+      
       return {
-        no: index + 1,
         date: decodedDate,
         name: decodedName,
         so: decodedSo,
@@ -358,7 +363,8 @@ export async function getInquiryBilling(params: {
         un: Number(row.IC_UN || 0),
         memo: decode(row.IC_MEMO),
         isRowSaved: !!savedId,
-        savedId: savedId || null
+        savedId: savedId || null,
+        isGhost: false
       };
     }).filter((row: any) => {
       const hasKeyword = (text: string) => text.includes('회수') || text.includes('회송');
@@ -375,9 +381,38 @@ export async function getInquiryBilling(params: {
       );
     });
 
+    // DB에는 없는데 저장된 기록만 있는 경우 (고아 데이터)
+    const ghostRows = Array.from(savedKeys).map(key => {
+      const s = savedSettlements.find(item => item.id === savedItemsMap.get(key));
+      if (!s) return null;
+      return {
+        date: s.date,
+        name: s.name,
+        so: s.so,
+        nap: s.nap,
+        ton: s.ton || '',
+        kum: s.kum,
+        yo: s.yo || '',
+        chung: s.chung || '',
+        un: s.un || 0,
+        memo: (s.memo || '') + ' [원본 데이터 없음(삭제됨)]',
+        isRowSaved: true,
+        savedId: s.id,
+        isGhost: true
+      };
+    }).filter(row => row !== null);
+
+    // 필터링된 배열과 고아 데이터를 합친 후 일련번호(no) 부여
+    const combinedData = [...parsedRows, ...ghostRows]
+      .sort((a: any, b: any) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name))
+      .map((item: any, index: number) => ({
+        no: index + 1,
+        ...item
+      }));
+
     return { 
       success: true, 
-      data: result,
+      data: combinedData,
       isSaved: savedSettlements.length > 0
     };
   } catch (error: any) {
