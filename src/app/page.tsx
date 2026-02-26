@@ -557,10 +557,10 @@ export default function Home() {
       )}
 
       {/* Main Table Container */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border-2 border-slate-200 overflow-hidden">
         <div className="overflow-x-auto min-h-[600px]">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+            <thead className="bg-slate-50 border-b-2 border-slate-200 sticky top-0 z-10">
               <tr>
                 <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">납품처</th>
                 <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">청구처</th>
@@ -571,7 +571,7 @@ export default function Home() {
                 {!isClosed && <th className="px-4 py-3 w-10"></th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y-2 divide-slate-100">
               {loading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-20 text-center text-slate-400">
@@ -583,7 +583,7 @@ export default function Home() {
                 <>
                   {/* 1. 고정 비용 */}
                   <tr className="bg-indigo-50/50">
-                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-indigo-700 border-y border-indigo-100 flex items-center justify-between">
+                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-indigo-700 border-y-2 border-indigo-100 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FileSpreadsheet size={12} /> 1. 고정 비용 정산 (월 고정 청구)
                       </div>
@@ -600,12 +600,12 @@ export default function Home() {
 
                   {isAddingFixed && (
                     <tr className="bg-indigo-50/30">
-                      <td className="px-4 py-2"><input type="text" placeholder="항목명" value={fixedForm.name} onChange={e => setFixedForm({...fixedForm, name: e.target.value})} className="w-full px-2 py-1 text-[12px] border rounded" /></td>
-                      <td className="px-4 py-2"><input type="text" placeholder="청구처" value={fixedForm.billingRecipient} onChange={e => setFixedForm({...fixedForm, billingRecipient: e.target.value})} className="w-full px-2 py-1 text-[12px] border rounded" /></td>
-                      <td className="px-4 py-2 text-right"><input type="number" placeholder="단가" value={fixedForm.rate || ''} onChange={e => { const rate = Number(e.target.value); setFixedForm({...fixedForm, rate, amount: fixedForm.count * rate}); }} className="w-24 px-2 py-1 text-[12px] border rounded text-right" /></td>
-                      <td className="px-4 py-2 text-center"><input type="number" placeholder="횟수" value={fixedForm.count || ''} onChange={e => { const count = Number(e.target.value); setFixedForm({...fixedForm, count, amount: count * fixedForm.rate}); }} className="w-16 px-2 py-1 text-[12px] border rounded text-center" /></td>
+                      <td className="px-4 py-2"><input type="text" placeholder="항목명" value={fixedForm.name} onChange={e => setFixedForm({...fixedForm, name: e.target.value})} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
+                      <td className="px-4 py-2"><input type="text" placeholder="청구처" value={fixedForm.billingRecipient} onChange={e => setFixedForm({...fixedForm, billingRecipient: e.target.value})} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
+                      <td className="px-4 py-2 text-right"><input type="number" placeholder="단가" value={fixedForm.rate || ''} onChange={e => { const rate = Number(e.target.value); setFixedForm({...fixedForm, rate, amount: fixedForm.count * rate}); }} className="w-24 px-2 py-1 text-[12px] border-2 rounded text-right" /></td>
+                      <td className="px-4 py-2 text-center"><input type="number" placeholder="횟수" value={fixedForm.count || ''} onChange={e => { const count = Number(e.target.value); setFixedForm({...fixedForm, count, amount: count * fixedForm.rate}); }} className="w-16 px-2 py-1 text-[12px] border-2 rounded text-center" /></td>
                       <td className="px-4 py-2 text-right font-bold text-indigo-600">₩{fixedForm.amount.toLocaleString()}</td>
-                      <td className="px-4 py-2"><input type="text" placeholder="비고" value={fixedForm.memo} onChange={e => setFixedForm({...fixedForm, memo: e.target.value})} className="w-full px-2 py-1 text-[12px] border rounded" /></td>
+                      <td className="px-4 py-2"><input type="text" placeholder="비고" value={fixedForm.memo} onChange={e => setFixedForm({...fixedForm, memo: e.target.value})} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
                       <td className="px-4 py-2 text-center">
                         <div className="flex gap-1 justify-center">
                           <button onClick={handleSaveFixed} className="text-emerald-600"><CheckCircle size={14}/></button>
@@ -636,7 +636,7 @@ export default function Home() {
 
                   {/* 2. GS 출고 */}
                   <tr className="bg-emerald-50/50">
-                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-emerald-700 border-y border-emerald-100 flex items-center gap-2">
+                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-emerald-700 border-y-2 border-emerald-100 flex items-center gap-2">
                       <Truck size={12} /> 2. GS 출고 정산 요약 (부산/양산/진주)
                     </td>
                   </tr>
@@ -668,7 +668,7 @@ export default function Home() {
 
                   {/* 3. 1일 출고 */}
                   <tr className="bg-blue-50/50">
-                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-blue-700 border-y border-blue-100 flex items-center gap-2">
+                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-blue-700 border-y-2 border-blue-100 flex items-center gap-2">
                       <Truck size={12} /> 3. 1일 출고 정산 요약
                     </td>
                   </tr>
@@ -686,7 +686,7 @@ export default function Home() {
 
                   {/* 4. 긴급 출고 */}
                   <tr className="bg-rose-50/50">
-                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-rose-700 border-y border-rose-100 flex items-center gap-2">
+                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-rose-700 border-y-2 border-rose-100 flex items-center gap-2">
                       <AlertCircle size={12} /> 4. 긴급 출고 정산 내역
                     </td>
                   </tr>
@@ -704,7 +704,7 @@ export default function Home() {
 
                   {/* 5. 청구 조회 */}
                   <tr className="bg-amber-50/50">
-                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-amber-700 border-y border-amber-100 flex items-center gap-2">
+                    <td colSpan={7} className="px-4 py-2 text-[11px] font-black text-amber-700 border-y-2 border-amber-100 flex items-center gap-2">
                       <FileSpreadsheet size={12} /> 5. 청구 조회 정산 내역 (t_il_car)
                     </td>
                   </tr>
@@ -724,7 +724,7 @@ export default function Home() {
                   {(totals.count > 0 || totals.cost > 0) && (
                     <tr className="bg-slate-800 text-white font-bold">
                       <td colSpan={3} className="px-4 py-4 text-[13px] text-center uppercase tracking-widest font-black">통합 청구 합계</td>
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-4 py-4 text-center border-x-2 border-white/10">
                         <span className="inline-flex items-center px-2 py-0.5 rounded bg-white/20 text-[11px] font-black">
                           {totals.count}회 전체 배송
                         </span>
