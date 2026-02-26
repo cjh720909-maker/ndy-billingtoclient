@@ -665,6 +665,18 @@ export default function Home() {
                       {!isClosed && <td className="px-4 py-2.5"></td>}
                     </tr>
                   )}
+                  {/* GS수퍼_부산(냉동) 이동 수록 */}
+                  {integratedData.daily.filter(item => item.placeName === 'GS수퍼_부산(냉동)').map((item, idx) => (
+                    <tr key={`gs-frozen-${idx}`} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-2.5 text-[12px] font-bold text-slate-800">{item.placeName}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-slate-500">{item.billingRecipient || 'KAM1팀'}</td>
+                      <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right">₩{Math.round(item.totalAmount / item.deliveryDays).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-[12px] font-bold text-slate-700 text-center">{item.deliveryDays}일</td>
+                      <td className="px-4 py-2.5 text-[12px] font-bold text-emerald-600 text-right">₩{item.totalAmount.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-[11px] text-slate-500">GS 냉동 정산</td>
+                      {!isClosed && <td className="px-4 py-2.5"></td>}
+                    </tr>
+                  ))}
 
                   {/* 3. 1일 출고 */}
                   <tr className="bg-blue-50/50">
@@ -672,7 +684,7 @@ export default function Home() {
                       <Truck size={12} /> 3. 1일 출고 정산 요약
                     </td>
                   </tr>
-                  {integratedData.daily.map((item, idx) => (
+                  {integratedData.daily.filter(item => item.placeName !== 'GS수퍼_부산(냉동)').map((item, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-2.5 text-[12px] font-bold text-slate-700">{item.placeName}</td>
                       <td className="px-4 py-2.5 text-[12px] text-slate-500">{item.billingRecipient || '본사청구'}</td>
