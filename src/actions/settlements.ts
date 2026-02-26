@@ -222,6 +222,17 @@ export async function getIntegratedBillingSummary(params: {
       totalAmount: sundayCount * 150000
     };
 
+    // 청구 조회 항목에 청구처 정보 매핑 (chung이 비어있는 경우 마스터 데이터 활용)
+    const inquiryWithBilling = inquirySettlements.map((item: any) => {
+      // nap(납품처)으로 마스터 데이터 찾기
+      const billingInfo = billingItems.find(bi => bi.name === item.nap);
+      return {
+        ...item,
+        // 기존 chung이 있으면 유지, 없으면 마스터 데이터의 청구처, 그것도 없으면 본사청구
+        chung: item.chung || billingInfo?.billingRecipient || '본사청구'
+      };
+    });
+
     return {
       success: true,
       data: {
@@ -229,7 +240,7 @@ export async function getIntegratedBillingSummary(params: {
         gs: gsSummary ? { summary: gsSummary } : null,
         gsJinju: finalGsJinju,
         emergency: emergencySettlements,
-        inquiry: inquirySettlements,
+        inquiry: inquiryWithBilling,
         fixed: finalFixedCosts
       }
     };

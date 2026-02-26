@@ -214,7 +214,7 @@ export default function Home() {
         if (integratedData.gsJinju && integratedData.gsJinju.count > 0) {
           wsData.push([
             { v: 'GS 진주', s: sCell },
-            { v: 'KAM1팀', s: sCell },
+            { v: 'CVS리테일팀', s: sCell },
             { v: 150000, t: 'n', s: sCellNumber },
             { v: integratedData.gsJinju.count, t: 'n', s: sCellNumber },
             { v: integratedData.gsJinju.totalAmount, t: 'n', s: sCellNumber },
@@ -304,7 +304,7 @@ export default function Home() {
       integratedData.inquiry.forEach(item => {
         wsData.push([
           { v: item.nap, s: sCell },
-          { v: item.so, s: sCell },
+          { v: item.chung || item.so, s: sCell },
           { v: Math.round(item.kum / 1), t: 'n', s: sCellNumber },
           { v: 1, t: 'n', s: sCellNumber },
           { v: item.kum, t: 'n', s: sCellNumber },
@@ -775,7 +775,7 @@ export default function Home() {
                         {integratedData.gsJinju && integratedData.gsJinju.count > 0 && (
                           <tr className="hover:bg-indigo-50/10 transition-colors bg-amber-50/5">
                             <td className="px-4 py-2.5 text-[12px] font-semibold text-slate-800">GS 진주</td>
-                            <td className="px-4 py-2.5 text-[12px] text-slate-500">KAM1팀</td>
+                            <td className="px-4 py-2.5 text-[12px] text-slate-500">CVS리테일팀</td>
                             <td className="px-4 py-2.5 text-[12px] font-medium text-slate-500 text-right">150,000원</td>
                             <td className="px-4 py-2.5 text-center">
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-100 text-[10px] font-bold text-indigo-700">
@@ -900,7 +900,7 @@ export default function Home() {
                       {integratedData.inquiry.map((item, idx) => (
                         <tr key={`inquiry-${idx}`} className="hover:bg-indigo-50/10 transition-colors">
                           <td className="px-4 py-2.5 text-[12px] font-bold text-slate-800">{item.nap}</td>
-                          <td className="px-4 py-2.5 text-[12px] text-slate-500">{item.so}</td>
+                          <td className="px-4 py-2.5 text-[12px] text-slate-500">{item.chung || item.so}</td>
                           <td className="px-4 py-2.5 text-[12px] font-medium text-slate-500 text-right">
                             {item.kum.toLocaleString()}원
                           </td>
