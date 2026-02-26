@@ -1,8 +1,19 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-async function check() {
+async function cleanup() {
   try {
+    // 1. 문제 데이터 삭제
+    const deleted = await prisma.fixedSettlement.deleteMany({
+      where: {
+        name: {
+          contains: '창원'
+        }
+      }
+    });
+    console.log(`Deleted ${deleted.count} problematic records.`);
+
+    // 2. 전체 테이블 상태 확인
     const tables = [
       'billingItem',
       'billingRate',
@@ -16,19 +27,17 @@ async function check() {
       'monthlyClosing'
     ];
 
+    console.log('\n--- Current DB Status ---');
     for (const table of tables) {
       const count = await prisma[table].count();
       console.log(`${table}: ${count} records`);
-      if (count > 0) {
-        const items = await prisma[table].findMany({ take: 5 });
-        console.log(`${table} samples:`, JSON.stringify(items, null, 2));
-      }
     }
+
   } catch (e) {
-    console.error(e);
+    console.error('Cleanup/Check failed:', e);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-check();
+cleanup();

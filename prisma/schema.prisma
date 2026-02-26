@@ -7,40 +7,37 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 1. 청구 항목 관리 (Billing Items)
 model BillingItem {
-  id               String            @id @default(uuid())
-  code             String            @default("")
+  id               String        @id @default(uuid())
+  code             String        @default("")
   name             String
-  billingRecipient String            @default("")
-  type             String            @default("기본운임")
-  mergeCriteria    String            @default("name") // 'code' | 'name'
-  note             String            @default("")
+  billingRecipient String        @default("")
+  type             String        @default("기본운임")
+  mergeCriteria    String        @default("name")
+  note             String        @default("")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
   rates            BillingRate[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
 
   @@map("NDY_BillingItem")
 }
 
-// 2. 청구 단가 이력 (Billing Rates)
 model BillingRate {
-  id        String          @id @default(uuid())
+  id        String      @id @default(uuid())
   itemId    String
+  validFrom String
+  validTo   String?
+  amount    Int         @default(0)
+  note      String      @default("")
+  createdAt DateTime    @default(now())
   item      BillingItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  validFrom String // YYYY-MM-DD
-  validTo   String? // YYYY-MM-DD or null
-  amount    Int             @default(0)
-  note      String            @default("")
-  createdAt DateTime        @default(now())
 
   @@map("NDY_BillingRate")
 }
 
-// 3. GS 출고 정산 데이터 (일별/납품처별)
 model GSSettlement {
   id      String   @id @default(uuid())
-  date    String // YYYY-MM-DD
+  date    String
   code    String
   name    String?
   qty     Decimal  @db.Decimal(11, 2)
@@ -53,17 +50,16 @@ model GSSettlement {
   @@map("NDY_GSSettlement")
 }
 
-// 4. GS 정산 요약 (기간별)
 model GSSummary {
   id          String   @id @default(uuid())
-  startDate   String // YYYY-MM-DD
-  endDate     String // YYYY-MM-DD
+  startDate   String
+  endDate     String
   weekday     Int      @default(0)
   saturday    Int      @default(0)
   sunday      Int      @default(0)
   extraTrucks Int      @default(0)
   totalAmount Int      @default(0)
-  dates       String[] // 배송 발생일 리스트
+  dates       String[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -71,54 +67,51 @@ model GSSummary {
   @@map("NDY_GSSummary")
 }
 
-// 5. 일일 정산 요약 (기간별)
 model DailySummary {
-  id        String               @id @default(uuid())
-  startDate String // YYYY-MM-DD
-  endDate   String // YYYY-MM-DD
+  id        String             @id @default(uuid())
+  startDate String
+  endDate   String
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
   items     DailySummaryItem[]
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
 
   @@unique([startDate, endDate], name: "DAILY_SUMMARY_UNIQUE")
   @@map("NDY_DailySummary")
 }
 
 model DailySummaryItem {
-  id           String           @id @default(uuid())
-  summaryId    String
-  summary      DailySummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
-  placeName    String
-  deliveryDays Int              @default(0)
-  totalAmount  Int              @default(0)
-  deliveryDates String[]         // 해당 업체 배송일 리스트
+  id            String       @id @default(uuid())
+  summaryId     String
+  placeName     String
+  deliveryDays  Int          @default(0)
+  totalAmount   Int          @default(0)
+  deliveryDates String[]
+  summary       DailySummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
 
   @@map("NDY_DailySummaryItem")
 }
 
-// 6. 긴급 출고 정산 요약 (기간별)
 model EmergencySettlement {
   id        String   @id @default(uuid())
-  startDate String // YYYY-MM-DD
-  endDate   String // YYYY-MM-DD
+  startDate String
+  endDate   String
   name      String
   chung     String   @default("")
   count     Int      @default(0)
   rate      Int      @default(0)
   total     Int      @default(0)
-  dates     String[] // 긴급 출고 발생일 리스트
+  dates     String[]
   createdAt DateTime @default(now())
 
   @@unique([startDate, endDate, name], name: "EMERG_UNIQUE")
   @@map("NDY_EmergencySettlement")
 }
 
-// 7. 청구 조회 정산 요약 (기간별)
 model InquirySettlement {
   id        String   @id @default(uuid())
-  startDate String // YYYY-MM-DD
-  endDate   String // YYYY-MM-DD
-  date      String // 개별 항목 날짜
+  startDate String
+  endDate   String
+  date      String
   name      String
   so        String
   nap       String
@@ -134,7 +127,6 @@ model InquirySettlement {
   @@map("NDY_InquirySettlement")
 }
 
-// 8. 긴급 출고 마스터 단가
 model EmergencyRate {
   name      String   @id
   rate      Int      @default(0)
@@ -144,19 +136,19 @@ model EmergencyRate {
   @@map("NDY_EmergencyRate")
 }
 
-// 9. 고정 비용 (고정액)
 model FixedSettlement {
-  id        String   @id @default(uuid())
+  id               String   @id @default(uuid())
   name             String
   billingRecipient String   @default("")
   amount           Int      @default(0)
+  count            Int      @default(0)
+  rate             Int      @default(0)
   note             String?
   createdAt        DateTime @default(now())
 
   @@map("NDY_FixedSettlement")
 }
 
-// 10. 기타 설정 (GS 피킹 등)
 model Config {
   key       String   @id
   data      Json
@@ -164,12 +156,12 @@ model Config {
 
   @@map("NDY_Config")
 }
-// 11. 지점 청구 마감 (스냅샷 저장)
+
 model MonthlyClosing {
   id        String   @id @default(uuid())
-  startDate String // YYYY-MM-DD
-  endDate   String // YYYY-MM-DD
-  data      Json // 통합 정산 스냅샷 (daily, gs, emergency, inquiry, fixed 등)
+  startDate String
+  endDate   String
+  data      Json
   closedAt  DateTime @default(now())
 
   @@unique([startDate, endDate], name: "CLOSING_UNIQUE")

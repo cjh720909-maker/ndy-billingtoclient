@@ -901,6 +901,8 @@ export async function saveFixedSettlement(params: {
   name: string;
   billingRecipient: string;
   amount: number;
+  count: number;
+  rate: number;
   memo: string;
 }) {
   console.log('Saving Fixed Settlement:', params);
@@ -912,6 +914,8 @@ export async function saveFixedSettlement(params: {
           name: params.name,
           billingRecipient: params.billingRecipient,
           amount: params.amount,
+          count: params.count,
+          rate: params.rate,
           note: params.memo
         }
       });
@@ -921,6 +925,8 @@ export async function saveFixedSettlement(params: {
           name: params.name,
           billingRecipient: params.billingRecipient,
           amount: params.amount,
+          count: params.count,
+          rate: params.rate,
           note: params.memo
         }
       });

@@ -179,8 +179,8 @@ export default function Home() {
         wsData.push([
           { v: item.name, s: sCell },
           { v: '고정비용', s: sCell },
-          { v: item.amount, t: 'n', s: sCellNumber },
-          { v: '월 고정', s: sCell },
+          { v: item.rate || item.amount, t: 'n', s: sCellNumber },
+          { v: item.count || 1, t: 'n', s: sCellNumber },
           { v: item.amount, t: 'n', s: sCellNumber },
           { v: item.note || '-', s: sCell }
         ]);
@@ -410,7 +410,7 @@ export default function Home() {
   // 고정 비용 관리 상태
   const [isAddingFixed, setIsAddingFixed] = useState(false);
   const [editingFixedId, setEditingFixedId] = useState<string | null>(null);
-  const [fixedForm, setFixedForm] = useState({ name: '', billingRecipient: '', amount: 0, memo: '' });
+  const [fixedForm, setFixedForm] = useState({ name: '', billingRecipient: '', amount: 0, count: 0, rate: 0, memo: '' });
 
   const handleSaveFixed = async () => {
     if (!fixedForm.name || fixedForm.amount <= 0) {
@@ -424,7 +424,7 @@ export default function Home() {
     if (res.success) {
       setIsAddingFixed(false);
       setEditingFixedId(null);
-      setFixedForm({ name: '', billingRecipient: '', amount: 0, memo: '' });
+      setFixedForm({ name: '', billingRecipient: '', amount: 0, count: 0, rate: 0, memo: '' });
       fetchData(startDate, endDate);
     } else {
       alert(res.error);
@@ -598,7 +598,7 @@ export default function Home() {
                            onClick={() => {
                              setIsAddingFixed(true);
                              setEditingFixedId(null);
-                             setFixedForm({ name: '', billingRecipient: '', amount: 0, memo: '' });
+                             setFixedForm({ name: '', billingRecipient: '', amount: 0, count: 0, rate: 0, memo: '' });
                            }}
                            className="flex items-center gap-1 px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-bold hover:bg-indigo-700"
                          >
@@ -628,16 +628,40 @@ export default function Home() {
                           className="w-full px-2 py-1 text-[12px] border rounded"
                         />
                       </td>
-                      <td className="px-4 py-2" colSpan={2}>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1">
+                          <input 
+                            type="number" 
+                            placeholder="횟수"
+                            value={fixedForm.count || ''}
+                            onChange={e => {
+                              const count = Number(e.target.value);
+                              setFixedForm({...fixedForm, count, amount: count * fixedForm.rate});
+                            }}
+                            className="w-16 px-2 py-1 text-[12px] border rounded text-center"
+                          />
+                          <span className="text-[12px] text-slate-400">×</span>
+                          <input 
+                            type="number" 
+                            placeholder="단가"
+                            value={fixedForm.rate || ''}
+                            onChange={e => {
+                              const rate = Number(e.target.value);
+                              setFixedForm({...fixedForm, rate, amount: fixedForm.count * rate});
+                            }}
+                            className="w-24 px-2 py-1 text-[12px] border rounded text-right"
+                          />
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
                         <input 
                           type="number" 
                           placeholder="금액"
                           value={fixedForm.amount || ''}
-                          onChange={e => setFixedForm({...fixedForm, amount: Number(e.target.value)})}
-                          className="w-full px-2 py-1 text-[12px] border rounded text-right"
+                          readOnly
+                          className="w-full px-2 py-1 text-[12px] border rounded text-right bg-slate-50 font-bold text-indigo-600"
                         />
                       </td>
-                      <td colSpan={1}></td>
                       <td className="px-4 py-2">
                         <input 
                           type="text" 
@@ -664,7 +688,10 @@ export default function Home() {
                         {item.amount.toLocaleString()}원
                       </td>
                       <td className="px-4 py-2.5 text-center">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-50 text-[10px] font-bold text-amber-600">월 고정</span>
+                        <div className="flex flex-col items-center">
+                          <span className="text-[12px] font-bold text-slate-700">{item.count || 0}회</span>
+                          <span className="text-[10px] text-slate-400">({(item.rate || 0).toLocaleString()}원)</span>
+                        </div>
                       </td>
                       <td className="px-4 py-2.5 text-[12px] font-bold text-amber-600 text-right">{item.amount.toLocaleString()}원</td>
                       <td className="px-4 py-2.5">
@@ -677,7 +704,14 @@ export default function Home() {
                                 onClick={() => {
                                   setIsAddingFixed(true);
                                   setEditingFixedId(item.id);
-                                  setFixedForm({ name: item.name, billingRecipient: item.billingRecipient || '', amount: item.amount, memo: item.note || '' });
+                                  setFixedForm({ 
+                                    name: item.name, 
+                                    billingRecipient: item.billingRecipient || '', 
+                                    amount: item.amount, 
+                                    count: item.count || 0, 
+                                    rate: item.rate || 0, 
+                                    memo: item.note || '' 
+                                  });
                                 }}
                               className="p-1 text-slate-400 hover:text-indigo-600"
                             >
