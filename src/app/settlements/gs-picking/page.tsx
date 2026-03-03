@@ -124,6 +124,10 @@ export default function GSPickingSettlementPage() {
         cacheBust: true,
         style: {
           borderRadius: '0',
+        },
+        filter: (node: any) => {
+          if (node.dataset?.ignoreCapture === 'true') return false;
+          return true;
         }
       });
       
@@ -235,7 +239,7 @@ export default function GSPickingSettlementPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[500px] flex flex-col">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[500px] flex flex-col" ref={tableRef}>
         <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded-md">STATUS</span>
@@ -255,6 +259,7 @@ export default function GSPickingSettlementPage() {
             <button
               onClick={copyAsImage}
               disabled={copying}
+              data-ignore-capture="true"
               className={`
                 flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold transition-all shadow-sm
                 ${copySuccess 
@@ -273,7 +278,7 @@ export default function GSPickingSettlementPage() {
           )}
         </div>
         
-        <div className="flex-1 overflow-auto" ref={tableRef}>
+        <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" /></div>
           ) : data.length > 0 ? (
@@ -335,9 +340,9 @@ export default function GSPickingSettlementPage() {
                       </React.Fragment>
                     );
                   })}
-                  <td className="sticky right-[180px] z-30 bg-indigo-100 px-2 py-2 text-[11px] text-right border-l border-indigo-200">{Object.values(matrixData.settlementInfo).reduce((a, b) => a + b.qty, 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  <td className="sticky right-[100px] z-30 bg-emerald-100 px-2 py-2 text-[11px] text-center border-l border-emerald-200">{Object.values(matrixData.settlementInfo).reduce((acc, cur) => acc + cur.pallets, 0).toLocaleString()} PL</td>
-                  <td className="sticky right-0 z-30 bg-amber-100 px-2 py-2 text-[11px] text-right border-l border-amber-200">{Object.values(matrixData.settlementInfo).reduce((acc, cur) => acc + cur.amount, 0).toLocaleString()}</td>
+                  <td className="sticky right-[180px] z-30 bg-indigo-100 px-2 py-2 text-[11px] text-right border-l border-indigo-200">{Object.values(matrixData.settlementInfo).reduce((a, b) => a + (b as any).qty, 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                  <td className="sticky right-[100px] z-30 bg-emerald-100 px-2 py-2 text-[11px] text-center border-l border-emerald-200">{Object.values(matrixData.settlementInfo).reduce((acc, cur) => acc + (cur as any).pallets, 0).toLocaleString()} PL</td>
+                  <td className="sticky right-0 z-30 bg-amber-100 px-2 py-2 text-[11px] text-right border-l border-amber-200">{Object.values(matrixData.settlementInfo).reduce((acc, cur) => acc + (cur as any).amount, 0).toLocaleString()}</td>
                 </tr>
               </tbody>
             </table>
