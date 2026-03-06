@@ -13,7 +13,6 @@ export interface CommonSearchQuery {
 export interface IntegratedData {
   daily: any[];
   gs: any | null;
-  gsJinju: any | null;
   emergency: any[];
   inquiry: any[];
   fixed: any[];

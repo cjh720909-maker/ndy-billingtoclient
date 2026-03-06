@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Download, 
-  Printer, 
+import {
+  Download,
+  Printer,
   Calendar,
   FileSpreadsheet,
   Loader2,
@@ -40,7 +40,7 @@ export default function Home() {
 
   const { integrated, setIntegratedState, syncDateAcrossPages } = useSettlementStore();
   const { query, data: integratedDataRaw, isSaved: isClosed, hasSearched } = integrated;
-  const integratedData = integratedDataRaw || { daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] };
+  const integratedData = integratedDataRaw || { daily: [], gs: null, emergency: [], inquiry: [], fixed: [] };
   const safeData = integratedData;
   const selectedMonthStr = query.selectedMonth;
   const selectedMonth = new Date(selectedMonthStr);
@@ -64,7 +64,7 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchData = useCallback(async (start: string, end: string) => {
     setLoading(true);
-    
+
     // 1. 마감 데이터 확인
     const closingRes = await getMonthlyClosing({ startDate: start, endDate: end });
     if (closingRes.success && closingRes.data) {
@@ -83,7 +83,7 @@ export default function Home() {
     } else {
       console.error('Fetch data failed:', result.error);
       alert(result.error || '데이터를 가져오는데 실패했습니다.');
-      setIntegratedState({ data: { daily: [], gs: null, gsJinju: null, emergency: [], inquiry: [], fixed: [] }, isSaved: false, hasSearched: true });
+      setIntegratedState({ data: { daily: [], gs: null, emergency: [], inquiry: [], fixed: [] }, isSaved: false, hasSearched: true });
     }
     setLoading(false);
   }, []);
@@ -98,7 +98,7 @@ export default function Home() {
 
   // 엑셀 다운로드 구현
   const handleExcelDownload = () => {
-    if (integratedData.daily.length === 0 && !integratedData.gs && integratedData.emergency.length === 0 && integratedData.inquiry.length === 0 && integratedData.fixed.length === 0 && (integratedData.gsJinju?.count || 0) === 0) {
+    if (integratedData.daily.length === 0 && !integratedData.gs && integratedData.emergency.length === 0 && integratedData.inquiry.length === 0 && integratedData.fixed.length === 0) {
       alert('다운로드할 데이터가 없습니다.');
       return;
     }
@@ -106,65 +106,66 @@ export default function Home() {
     const wb = XLSX.utils.book_new();
     const wsData: any[] = [];
 
-    // 스타일 정의
+    // 미니멀 스타일 정의 (배경색 제거 및 검정색 텍스트)
     const sHeader = {
-      font: { sz: 16, bold: true, color: { rgb: "FFFFFF" } },
+      font: { sz: 18, bold: true, color: { rgb: "000000" } },
       alignment: { horizontal: "center", vertical: "center" },
-      fill: { fgColor: { rgb: "4F46E5" } }, // indigo-600
-      border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } }
+      border: {
+        top: { style: "medium", color: { rgb: "000000" } },
+        bottom: { style: "medium", color: { rgb: "000000" } }
+      }
     };
     const sPeriod = {
-      font: { sz: 10, bold: true },
+      font: { sz: 11, bold: true, color: { rgb: "000000" } },
       alignment: { horizontal: "center" },
-      fill: { fgColor: { rgb: "F8FAFC" } },
-      border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } }
+      border: { bottom: { style: "thin", color: { rgb: "000000" } } }
     };
     const sSection = {
-      font: { sz: 12, bold: true, color: { rgb: "4F46E5" } },
-      fill: { fgColor: { rgb: "EEF2FF" } }, // indigo-50
-      border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } }
+      font: { sz: 13, bold: true, color: { rgb: "000000" } },
+      alignment: { vertical: "center" },
+      border: {
+        left: { style: "medium", color: { rgb: "000000" } },
+        top: { style: "thin" }, bottom: { style: "thin" }
+      }
     };
     const sTableHead = {
-      font: { sz: 10, bold: true, color: { rgb: "475569" } }, // slate-600
-      alignment: { horizontal: "center" },
-      fill: { fgColor: { rgb: "F1F5F9" } }, // slate-100
-      border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } }
+      font: { sz: 10, bold: true, color: { rgb: "000000" } },
+      alignment: { horizontal: "center", vertical: "center" },
+      fill: { fgColor: { rgb: "F1F5F9" } }, // 아주 연한 회색 배경만 유지하여 구분감 확보
+      border: { all: { style: "thin", color: { rgb: "000000" } } }
     };
     const sCell = {
-      font: { sz: 10 },
-      border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } }
+      font: { sz: 10, color: { rgb: "000000" } },
+      border: { all: { style: "thin", color: { rgb: "E2E8F0" } } },
+      alignment: { vertical: "center" }
     };
     const sCellNumber = {
       ...sCell,
-      alignment: { horizontal: "right" },
+      alignment: { horizontal: "right", vertical: "center" },
       numFmt: "#,##0"
     };
     const sTotalLabel = {
-      font: { sz: 12, bold: true },
-      alignment: { horizontal: "center" },
-      fill: { fgColor: { rgb: "F1F5F9" } },
-      border: { top: { style: "medium" }, bottom: { style: "medium" }, left: { style: "thin" }, right: { style: "thin" } }
+      font: { sz: 12, bold: true, color: { rgb: "000000" } },
+      alignment: { horizontal: "center", vertical: "center" },
+      border: { top: { style: "medium", color: { rgb: "000000" } } }
     };
     const sTotalValue = {
-      font: { sz: 14, bold: true, color: { rgb: "059669" } }, // emerald-600
-      alignment: { horizontal: "right" },
-      fill: { fgColor: { rgb: "ECFDF5" } }, // emerald-50
+      font: { sz: 15, bold: true, color: { rgb: "000000" } },
+      alignment: { horizontal: "right", vertical: "center" },
       numFmt: "#,##0",
-      border: { top: { style: "medium" }, bottom: { style: "medium" }, left: { style: "thin" }, right: { style: "thin" } }
+      border: { top: { style: "medium", color: { rgb: "000000" } } }
     };
 
     const emptyCell = { v: '', s: sCell };
 
-    // 타이틀 및 기간
-    wsData.push([
-      { v: '지점청구 통합 요약 보고서', s: sHeader }, 
-      { v: '', s: sHeader }, { v: '', s: sHeader }, { v: '', s: sHeader }, { v: '', s: sHeader }, { v: '', s: sHeader }
-    ]);
-    wsData.push([
-      { v: `조회 기간: ${startDate} ~ ${endDate}`, s: sPeriod },
-      { v: '', s: sPeriod }, { v: '', s: sPeriod }, { v: '', s: sPeriod }, { v: '', s: sPeriod }, { v: '', s: sPeriod }
-    ]);
-    wsData.push([]); // 빈 줄
+    // 타이틀 및 기간 (동적 생성)
+    const reportYear = selectedMonth.getFullYear();
+    const reportMonth = selectedMonth.getMonth() + 1;
+    const mainTitle = `${reportYear}년 ${reportMonth}월 지점청구 보고서`;
+
+    wsData.push([{ v: mainTitle, s: sHeader }, { v: '', s: sHeader }, { v: '', s: sHeader }, { v: '', s: sHeader }, { v: '', s: sHeader }, { v: '', s: sHeader }]);
+    wsData.push([{ v: `정산 정산 기간: ${startDate} ~ ${endDate}`, s: sPeriod }, { v: '', s: sPeriod }, { v: '', s: sPeriod }, { v: '', s: sPeriod }, { v: '', s: sPeriod }, { v: '', s: sPeriod }]);
+    wsData.push([]); // 스페이싱
 
     // 1. 고정 비용 정산 섹션
     if (integratedData.fixed.length > 0) {
@@ -173,13 +174,13 @@ export default function Home() {
         { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }
       ]);
       wsData.push([
-        { v: '항목명', s: sTableHead }, { v: '구분', s: sTableHead }, { v: '단가(금액)', s: sTableHead }, 
+        { v: '항목명', s: sTableHead }, { v: '청구처', s: sTableHead }, { v: '단가(금액)', s: sTableHead },
         { v: '배송횟수', s: sTableHead }, { v: '청구금액', s: sTableHead }, { v: '비고', s: sTableHead }
       ]);
       integratedData.fixed.forEach(item => {
         wsData.push([
           { v: item.name, s: sCell },
-          { v: '고정비용', s: sCell },
+          { v: item.billingRecipient || '-', s: sCell },
           { v: item.rate || item.amount, t: 'n', s: sCellNumber },
           { v: item.count || 1, t: 'n', s: sCellNumber },
           { v: item.amount, t: 'n', s: sCellNumber },
@@ -197,10 +198,10 @@ export default function Home() {
         { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }
       ]);
       wsData.push([
-        { v: '납품처', s: sTableHead }, { v: '구분', s: sTableHead }, { v: '단가', s: sTableHead }, 
+        { v: '납품처', s: sTableHead }, { v: '청구처', s: sTableHead }, { v: '단가', s: sTableHead },
         { v: '배송횟수', s: sTableHead }, { v: '청구금액', s: sTableHead }, { v: '비고', s: sTableHead }
       ]);
-      
+
       if (integratedData.gs) {
         const gs = integratedData.gs.summary;
         wsData.push([
@@ -212,18 +213,8 @@ export default function Home() {
           { v: `평일 ${gs.weekday}/토 ${gs.saturday}/일 ${gs.sunday}${gs.extraTrucks > 0 ? ` (+2회전 ${gs.extraTrucks}회)` : ''}`, s: sCell }
         ]);
 
-        if (integratedData.gsJinju && integratedData.gsJinju.count > 0) {
-          wsData.push([
-            { v: 'GS 진주', s: sCell },
-            { v: 'CVS리테일팀', s: sCell },
-            { v: 150000, t: 'n', s: sCellNumber },
-            { v: integratedData.gsJinju.count, t: 'n', s: sCellNumber },
-            { v: integratedData.gsJinju.totalAmount, t: 'n', s: sCellNumber },
-            { v: 'GS 진주 일요일 출고', s: sCell }
-          ]);
-        }
       }
-      
+
       if (gsBusanFrozen) {
         wsData.push([
           { v: gsBusanFrozen.placeName, s: sCell },
@@ -245,7 +236,7 @@ export default function Home() {
         { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }
       ]);
       wsData.push([
-        { v: '납품처', s: sTableHead }, { v: '구분', s: sTableHead }, { v: '단가', s: sTableHead }, 
+        { v: '납품처', s: sTableHead }, { v: '청구처', s: sTableHead }, { v: '단가', s: sTableHead },
         { v: '배송횟수', s: sTableHead }, { v: '청구금액', s: sTableHead }, { v: '비고', s: sTableHead }
       ]);
       filteredDaily.forEach(item => {
@@ -268,21 +259,21 @@ export default function Home() {
         { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }
       ]);
       wsData.push([
-        { v: '납품처', s: sTableHead }, { v: '구분', s: sTableHead }, { v: '단가', s: sTableHead }, 
+        { v: '납품처', s: sTableHead }, { v: '청구처', s: sTableHead }, { v: '단가', s: sTableHead },
         { v: '배송횟수', s: sTableHead }, { v: '청구금액', s: sTableHead }, { v: '비고', s: sTableHead }
       ]);
       integratedData.emergency.forEach(item => {
         const formattedDates = (item.dates && Array.isArray(item.dates))
           ? item.dates.map((d: string) => {
-              const parts = d.split('-');
-              if (parts.length < 3) return d;
-              return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
-            }).join(', ')
+            const parts = d.split('-');
+            if (parts.length < 3) return d;
+            return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+          }).join(', ')
           : (item.memo && item.memo.includes('[') ? item.memo.split('[')[1].split(']')[0] : '-');
 
         wsData.push([
           { v: item.name, s: sCell },
-          { v: '긴급출고', s: sCell },
+          { v: item.chung || '-', s: sCell },
           { v: item.rate, t: 'n', s: sCellNumber },
           { v: item.count, t: 'n', s: sCellNumber },
           { v: item.rate * item.count, t: 'n', s: sCellNumber },
@@ -299,7 +290,7 @@ export default function Home() {
         { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }
       ]);
       wsData.push([
-        { v: '납품처', s: sTableHead }, { v: '구분', s: sTableHead }, { v: '단가', s: sTableHead }, 
+        { v: '납품처', s: sTableHead }, { v: '청구처', s: sTableHead }, { v: '단가', s: sTableHead },
         { v: '배송횟수', s: sTableHead }, { v: '청구금액', s: sTableHead }, { v: '비고', s: sTableHead }
       ]);
       integratedData.inquiry.forEach(item => {
@@ -321,7 +312,7 @@ export default function Home() {
       { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }, { v: '', s: sSection }
     ]);
     wsData.push([
-      { v: '항목', s: sTableHead }, { v: '', s: sTableHead }, { v: '', s: sTableHead }, 
+      { v: '항목', s: sTableHead }, { v: '', s: sTableHead }, { v: '', s: sTableHead },
       { v: '총 배송횟수', s: sTableHead }, { v: '총 청구금액', s: sTableHead }, { v: '', s: sTableHead }
     ]);
     wsData.push([
@@ -351,7 +342,7 @@ export default function Home() {
     // 컬럼 너비 설정
     ws['!cols'] = [
       { wch: 30 }, // 납품처
-      { wch: 15 }, // 구분
+      { wch: 15 }, // 청구처
       { wch: 12 }, // 단가
       { wch: 12 }, // 배송횟수
       { wch: 15 }, // 청구금액
@@ -359,8 +350,9 @@ export default function Home() {
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, '통합청구요약');
-    
-    const fileName = `지점청구_통합요약_${startDate.replace(/-/g, '')}_${endDate.replace(/-/g, '')}${isClosed ? '_마감문서' : ''}.xlsx`;
+
+    const timeStamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
+    const fileName = `NDY_지점청구보고서_${reportYear}${String(reportMonth).padStart(2, '0')}_${timeStamp}${isClosed ? '_마감문서' : ''}.xlsx`;
     XLSX.writeFile(wb, fileName);
   };
 
@@ -462,10 +454,6 @@ export default function Home() {
       const gsDays = (safeData.gs.summary.weekday + safeData.gs.summary.saturday + safeData.gs.summary.sunday);
       count += gsDays;
     }
-    if (safeData.gsJinju) {
-      gsCost += safeData.gsJinju.totalAmount;
-      count += safeData.gsJinju.count;
-    }
 
     // 긴급 출고
     safeData.emergency.forEach(item => {
@@ -502,7 +490,7 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button 
+          <button
             onClick={handleSearch}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-[13px] font-bold hover:bg-indigo-700 active:scale-95 transition-all shadow-md shadow-indigo-100 disabled:opacity-50"
@@ -511,16 +499,16 @@ export default function Home() {
             조회하기
           </button>
           <div className="h-6 w-[1px] bg-slate-200 mx-1"></div>
-          <button 
+          <button
             onClick={handleExcelDownload}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 bg-slate-700 rounded-lg text-[12px] font-bold text-white hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50"
           >
             <Download size={15} /> 엑셀 다운로드
           </button>
-          
+
           {!isClosed ? (
-            <button 
+            <button
               onClick={handleClosing}
               disabled={loading || closingLoading}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 rounded-lg text-[12px] font-bold text-white hover:bg-emerald-700 transition-all active:scale-95 shadow-md shadow-emerald-100 disabled:opacity-50"
@@ -529,7 +517,7 @@ export default function Home() {
               월간 마감
             </button>
           ) : (
-            <button 
+            <button
               onClick={handleCancelClosing}
               disabled={loading || closingLoading}
               className="flex items-center gap-2 px-4 py-2 bg-rose-500 rounded-lg text-[12px] font-bold text-white hover:bg-rose-600 transition-all active:scale-95 shadow-md shadow-rose-100 disabled:opacity-50"
@@ -588,7 +576,7 @@ export default function Home() {
                         <FileSpreadsheet size={12} /> 1. 고정 비용 정산 (월 고정 청구)
                       </div>
                       {!isClosed && !isAddingFixed && (
-                        <button 
+                        <button
                           onClick={() => { setIsAddingFixed(true); setEditingFixedId(null); setFixedForm({ name: '', billingRecipient: '', amount: 0, count: 0, rate: 0, memo: '' }); }}
                           className="flex items-center gap-1 px-2 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-bold hover:bg-indigo-700"
                         >
@@ -600,16 +588,16 @@ export default function Home() {
 
                   {isAddingFixed && (
                     <tr className="bg-indigo-50/30">
-                      <td className="px-4 py-2"><input type="text" placeholder="항목명" value={fixedForm.name} onChange={e => setFixedForm({...fixedForm, name: e.target.value})} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
-                      <td className="px-4 py-2"><input type="text" placeholder="청구처" value={fixedForm.billingRecipient} onChange={e => setFixedForm({...fixedForm, billingRecipient: e.target.value})} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
-                      <td className="px-4 py-2 text-right"><input type="number" placeholder="단가" value={fixedForm.rate || ''} onChange={e => { const rate = Number(e.target.value); setFixedForm({...fixedForm, rate, amount: fixedForm.count * rate}); }} className="w-24 px-2 py-1 text-[12px] border-2 rounded text-right" /></td>
-                      <td className="px-4 py-2 text-center"><input type="number" placeholder="횟수" value={fixedForm.count || ''} onChange={e => { const count = Number(e.target.value); setFixedForm({...fixedForm, count, amount: count * fixedForm.rate}); }} className="w-16 px-2 py-1 text-[12px] border-2 rounded text-center" /></td>
+                      <td className="px-4 py-2"><input type="text" placeholder="항목명" value={fixedForm.name} onChange={e => setFixedForm({ ...fixedForm, name: e.target.value })} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
+                      <td className="px-4 py-2"><input type="text" placeholder="청구처" value={fixedForm.billingRecipient} onChange={e => setFixedForm({ ...fixedForm, billingRecipient: e.target.value })} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
+                      <td className="px-4 py-2 text-right"><input type="number" placeholder="단가" value={fixedForm.rate || ''} onChange={e => { const rate = Number(e.target.value); setFixedForm({ ...fixedForm, rate, amount: fixedForm.count * rate }); }} className="w-24 px-2 py-1 text-[12px] border-2 rounded text-right" /></td>
+                      <td className="px-4 py-2 text-center"><input type="number" placeholder="횟수" value={fixedForm.count || ''} onChange={e => { const count = Number(e.target.value); setFixedForm({ ...fixedForm, count, amount: count * fixedForm.rate }); }} className="w-16 px-2 py-1 text-[12px] border-2 rounded text-center" /></td>
                       <td className="px-4 py-2 text-right font-bold text-indigo-600">₩{fixedForm.amount.toLocaleString()}</td>
-                      <td className="px-4 py-2"><input type="text" placeholder="비고" value={fixedForm.memo} onChange={e => setFixedForm({...fixedForm, memo: e.target.value})} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
+                      <td className="px-4 py-2"><input type="text" placeholder="비고" value={fixedForm.memo} onChange={e => setFixedForm({ ...fixedForm, memo: e.target.value })} className="w-full px-2 py-1 text-[12px] border-2 rounded" /></td>
                       <td className="px-4 py-2 text-center">
                         <div className="flex gap-1 justify-center">
-                          <button onClick={handleSaveFixed} className="text-emerald-600"><CheckCircle size={14}/></button>
-                          <button onClick={() => setIsAddingFixed(false)} className="text-slate-400"><X size={14}/></button>
+                          <button onClick={handleSaveFixed} className="text-emerald-600"><CheckCircle size={14} /></button>
+                          <button onClick={() => setIsAddingFixed(false)} className="text-slate-400"><X size={14} /></button>
                         </div>
                       </td>
                     </tr>
@@ -626,8 +614,8 @@ export default function Home() {
                       {!isClosed && (
                         <td className="px-4 py-2.5 text-center">
                           <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => { setIsAddingFixed(true); setEditingFixedId(item.id); setFixedForm({ name: item.name, billingRecipient: item.billingRecipient || '', amount: item.amount, count: item.count || 0, rate: item.rate || 0, memo: item.note || '' }); }} className="p-1 text-slate-400 hover:text-indigo-600"><Edit2 size={13}/></button>
-                            <button onClick={() => handleDeleteFixed(item.id)} className="p-1 text-slate-400 hover:text-rose-500"><Trash2 size={13}/></button>
+                            <button onClick={() => { setIsAddingFixed(true); setEditingFixedId(item.id); setFixedForm({ name: item.name, billingRecipient: item.billingRecipient || '', amount: item.amount, count: item.count || 0, rate: item.rate || 0, memo: item.note || '' }); }} className="p-1 text-slate-400 hover:text-indigo-600"><Edit2 size={13} /></button>
+                            <button onClick={() => handleDeleteFixed(item.id)} className="p-1 text-slate-400 hover:text-rose-500"><Trash2 size={13} /></button>
                           </div>
                         </td>
                       )}
@@ -648,20 +636,9 @@ export default function Home() {
                       <td className="px-4 py-2.5 text-[12px] font-bold text-slate-700 text-center">{integratedData.gs.summary.weekday + integratedData.gs.summary.saturday + integratedData.gs.summary.sunday}일</td>
                       <td className="px-4 py-2.5 text-[12px] font-bold text-emerald-600 text-right">₩{integratedData.gs.summary.totalAmount.toLocaleString()}</td>
                       <td className="px-4 py-2.5 text-[11px] text-slate-500">
-                        평일{integratedData.gs.summary.weekday}/토{integratedData.gs.summary.saturday}/일{integratedData.gs.summary.sunday} 
+                        평일{integratedData.gs.summary.weekday}/토{integratedData.gs.summary.saturday}/일{integratedData.gs.summary.sunday}
                         {integratedData.gs.summary.extraTrucks > 0 && ` (+2회전 ${integratedData.gs.summary.extraTrucks})`}
                       </td>
-                      {!isClosed && <td className="px-4 py-2.5"></td>}
-                    </tr>
-                  )}
-                  {integratedData.gsJinju && integratedData.gsJinju.count > 0 && (
-                    <tr className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-2.5 text-[12px] font-bold text-slate-800">GS 진주</td>
-                      <td className="px-4 py-2.5 text-[12px] text-slate-500">CVS리테일팀</td>
-                      <td className="px-4 py-2.5 text-[11px] text-slate-400 text-right">₩150,000</td>
-                      <td className="px-4 py-2.5 text-[12px] font-bold text-slate-700 text-center">{integratedData.gsJinju.count}일</td>
-                      <td className="px-4 py-2.5 text-[12px] font-bold text-emerald-600 text-right">₩{integratedData.gsJinju.totalAmount.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 text-[11px] text-slate-500">GS 진주 일요일 출고</td>
                       {!isClosed && <td className="px-4 py-2.5"></td>}
                     </tr>
                   )}
@@ -731,7 +708,7 @@ export default function Home() {
                       {!isClosed && <td className="px-4 py-2.5"></td>}
                     </tr>
                   ))}
-                  
+
                   {/* Total Row */}
                   {(totals.count > 0 || totals.cost > 0) && (
                     <tr className="bg-slate-800 text-white font-bold">

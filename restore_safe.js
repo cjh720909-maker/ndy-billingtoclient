@@ -19,7 +19,15 @@ async function restoreSafe() {
         }
         await prisma.billingItem.upsert({
           where: { id: item.id },
-          update: {},
+          update: {
+            code: item.code || '',
+            name: item.name,
+            billingRecipient: item.billingRecipient || '',
+            type: item.type || '기본운임',
+            mergeCriteria: item.mergeCriteria || 'name',
+            note: item.note || '',
+            updatedAt: new Date(item.updatedAt)
+          },
           create: {
             id: item.id,
             code: item.code || '',
@@ -35,7 +43,12 @@ async function restoreSafe() {
         for (const rate of item.rates) {
           await prisma.billingRate.upsert({
             where: { id: rate.id },
-            update: {},
+            update: {
+              amount: rate.amount,
+              validFrom: rate.validFrom,
+              validTo: rate.validTo,
+              note: rate.note || ''
+            },
             create: {
               id: rate.id,
               itemId: rate.itemId,
@@ -62,8 +75,17 @@ async function restoreSafe() {
             console.log(`  Skipping fixed settlement: ${item.name}`);
             continue;
           }
-          await prisma.fixedSettlement.create({
-            data: {
+          await prisma.fixedSettlement.upsert({
+            where: { id: item.id },
+            update: {
+              name: item.name,
+              billingRecipient: item.billingRecipient || '',
+              amount: item.amount,
+              count: item.count || 1,
+              rate: item.rate || item.amount,
+              note: item.note || ''
+            },
+            create: {
               id: item.id,
               name: item.name,
               billingRecipient: item.billingRecipient || '',
@@ -79,37 +101,98 @@ async function restoreSafe() {
     }
     console.log('Fixed Settlements restored.');
 
-    // 3. Other Summaries & Settlements
-    const files = [
-      { name: 'daily_summaries.json', model: 'dailySummary' },
-      { name: 'gs_summaries.json', model: 'gSSummary' },
-      { name: 'emergency_settlements.json', model: 'emergencySettlement' },
-      { name: 'inquiry_settlements.json', model: 'inquirySettlement' }
+    // 3. Daily Summary & GS Summary & Emergency & Inquiry
+    // Special handling for unique keys
+    const modelsWithUnique = [
+      { 
+        file: 'daily_summaries.json', 
+        model: 'dailySummary', 
+        unique: 'DAILY_SUMMARY_UNIQUE', 
+        keys: ['startDate', 'endDate'],
+        hasItems: true
+      },
+      { 
+        file: 'gs_summaries.json', 
+        model: 'gSSummary', 
+        unique: 'GS_SUMMARY_UNIQUE', 
+        keys: ['startDate', 'endDate']
+      },
+      { 
+        file: 'emergency_settlements.json', 
+        model: 'emergencySettlement', 
+        unique: 'EMERG_UNIQUE', 
+        keys: ['startDate', 'endDate', 'name']
+      },
+      { 
+        file: 'inquiry_settlements.json', 
+        model: 'inquirySettlement', 
+        unique: 'INQUIRY_UNIQUE', 
+        keys: ['startDate', 'endDate', 'date', 'name', 'so', 'nap', 'kum']
+      }
     ];
 
-    for (const f of files) {
-      console.log(`Restoring ${f.model} from ${f.name}...`);
-      const filePath = path.join(dataDir, f.name);
+    for (const config of modelsWithUnique) {
+      console.log(`Restoring ${config.model} from ${config.file}...`);
+      const filePath = path.join(dataDir, config.file);
       if (fs.existsSync(filePath)) {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        if (Array.isArray(data)) {
-          for (const item of data) {
-            const { id, ...rest } = item;
-            await prisma[f.model].create({
-              data: {
-                ...rest,
-                id: id,
-                createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
-                updatedAt: item.updatedAt ? new Date(item.updatedAt) : undefined
-              }
+        for (const item of data) {
+          const { id, items, ...rest } = item;
+          
+          // Use id for where if possible, else use unique constraint
+          await prisma[config.model].upsert({
+            where: { id: id },
+            update: {
+              ...rest,
+              createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
+              updatedAt: item.updatedAt ? new Date(item.updatedAt) : undefined
+            },
+            create: {
+              ...rest,
+              id: id,
+              createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
+              updatedAt: item.updatedAt ? new Date(item.updatedAt) : undefined
+            }
+          });
+
+          if (config.hasItems && Array.isArray(items)) {
+            // Re-sync items for DailySummary
+            await prisma.dailySummaryItem.deleteMany({ where: { summaryId: id } });
+            await prisma.dailySummaryItem.createMany({
+              data: items.map(itm => ({
+                id: itm.id,
+                summaryId: id,
+                placeName: itm.placeName,
+                deliveryDays: itm.deliveryDays,
+                totalAmount: itm.totalAmount,
+                deliveryDates: itm.deliveryDates
+              }))
             });
           }
         }
       }
-      console.log(`${f.model} restored.`);
+      console.log(`${config.model} restored.`);
     }
 
-    // 4. Emergency Rates
+    // 4. GS Settlements (Special UUID + Unique Date/Code)
+    if (fs.existsSync(path.join(dataDir, 'gs_settlements.json'))) {
+      console.log('Restoring GS Settlements...');
+      const gsData = JSON.parse(fs.readFileSync(path.join(dataDir, 'gs_settlements.json'), 'utf8'));
+      for (const item of gsData) {
+        const { id, ...rest } = item;
+        await prisma.gSSettlement.upsert({
+          where: { id: id },
+          update: rest,
+          create: {
+            ...rest,
+            id: id
+          }
+        });
+      }
+      console.log('GS Settlements restored.');
+    }
+
+    // 5. Emergency Rates
     if (fs.existsSync(path.join(dataDir, 'emergency_rates.json'))) {
       const rates = JSON.parse(fs.readFileSync(path.join(dataDir, 'emergency_rates.json'), 'utf8'));
       for (const r of rates) {

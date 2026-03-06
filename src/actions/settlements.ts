@@ -15,7 +15,7 @@ interface GSPickingConfig {
 export async function saveGSSettlements(data: any[]) {
   try {
     const now = new Date();
-    
+
     await prisma.$transaction(
       data.map((item) => {
         return prisma.gSSettlement.upsert({
@@ -198,29 +198,8 @@ export async function getIntegratedBillingSummary(params: {
         ...item,
         billingRecipient: billingInfo?.billingRecipient || '본사청구'
       };
-    });
-
-    // GS 진주 일요일 출고 데이터 및 고정비 결정
+    });    // 고정비 결정
     let finalFixedCosts = fixedSettlements;
-
-    // MySQL 실시간 집계 제거 -> 날짜 기반으로 일요일 개수 계산 (t_balju 조회 없음)
-    const startDateObj = new Date(startNum.toString().replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'));
-    const endDateObj = new Date(endNum.toString().replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'));
-    
-    let sundayCount = 0;
-    let currentDate = new Date(startDateObj);
-    
-    while (currentDate <= endDateObj) {
-      if (currentDate.getDay() === 0) { // 0 represents Sunday
-        sundayCount++;
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    const finalGsJinju = {
-      count: sundayCount,
-      totalAmount: sundayCount * 150000
-    };
 
     // 청구 조회 항목에 청구처 정보 매핑 (chung이 비어있는 경우 마스터 데이터 활용)
     const inquiryWithBilling = inquirySettlements.map((item: any) => {
@@ -238,7 +217,6 @@ export async function getIntegratedBillingSummary(params: {
       data: {
         daily: dailyWithBilling,
         gs: gsSummary ? { summary: gsSummary } : null,
-        gsJinju: finalGsJinju,
         emergency: emergencySettlements,
         inquiry: inquiryWithBilling,
         fixed: finalFixedCosts
@@ -260,7 +238,7 @@ export async function getDailySettlements(params: {
 
   // GS 관련 타입인 경우 코드 기준 처리 (Release/Picking 모두 포함)
   const isGSType = type === 'gs' || type === 'gs-picking';
-  
+
   try {
     // 0. 저장된 데이터 가져오기 (GS 관련 타입인 경우)
     let savedGSDataMap = new Map<string, any>();
@@ -293,7 +271,7 @@ export async function getDailySettlements(params: {
     // [중요] 자동 정산 필터링 (WhiteList) 및 마스터 명칭 맵 생성
     let searchTerms: string[] = [];
     let criteria: 'name' | 'code' = (type === 'gs' || type === 'gs-picking') ? 'code' : 'name';
-    
+
     if (searchTerm) {
       searchTerms = searchTerm.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
     } else {
@@ -335,11 +313,11 @@ export async function getDailySettlements(params: {
     const groupedRows: { [key: string]: any } = {};
 
     rows.forEach((curr: any) => {
-      const date = curr.B_DATE instanceof Date 
-        ? curr.B_DATE.toISOString().split('T')[0] 
+      const date = curr.B_DATE instanceof Date
+        ? curr.B_DATE.toISOString().split('T')[0]
         : (typeof curr.B_DATE === 'string' ? curr.B_DATE.substring(0, 10) : '');
       const code = String(curr.B_C_CODE || '').trim();
-      
+
       // GS 타입인 경우 코드 기준으로 마스터 명칭 사용, 아니면 DB 명칭 사용
       const name = (isGSType && masterNames[code]) ? masterNames[code] : decode(curr.B_C_NAME);
       const boxes = Number(curr.TOTAL_BOXES || 0);
@@ -357,23 +335,23 @@ export async function getDailySettlements(params: {
       } else {
         matches = true;
       }
-      
+
       if (matches) {
         const groupKey = isGSType ? code : name;
         const key = `${date}_${groupKey}`;
-        
+
         if (!groupedRows[key]) {
           groupedRows[key] = {
             date: date,
-            code: code, 
+            code: code,
             name: name,
-            qty: 0, 
+            qty: 0,
             weight: 0,
             remarks: '',
             isSaved: false
           };
         }
-        
+
         groupedRows[key].qty += boxes;
         groupedRows[key].weight += weight;
       }
@@ -394,7 +372,7 @@ export async function getDailySettlements(params: {
           };
         }
       });
-      
+
       // 2. DB에는 없으나 저장된 데이터에만 있는 항목 추가 (기간 내)
       savedGSDataMap.forEach((item, key) => {
         if (!groupedRows[key]) {
@@ -410,11 +388,11 @@ export async function getDailySettlements(params: {
           }
 
           if (matches) {
-            groupedRows[key] = { 
-              ...item, 
+            groupedRows[key] = {
+              ...item,
               qty: Number(item.qty),
               weight: Number(item.weight),
-              isSaved: true 
+              isSaved: true
             };
           }
         }
@@ -460,18 +438,18 @@ export async function getGSPickingConfig(): Promise<{ success: boolean; data: GS
     const config = await prisma.config.findUnique({
       where: { key: 'gsPicking' }
     });
-    
+
     if (config && config.data) {
       const data = config.data as any;
-      return { 
-        success: true, 
+      return {
+        success: true,
         data: {
           boxesPerPallet: data.boxesPerPallet ?? 78,
           ratePerPallet: data.ratePerPallet ?? 8000
         }
       };
     }
-    
+
     return { success: true, data: { boxesPerPallet: 78, ratePerPallet: 8000 } };
   } catch (error) {
     console.error('Failed to get GS picking config:', error);
