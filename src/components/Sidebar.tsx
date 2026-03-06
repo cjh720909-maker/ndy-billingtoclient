@@ -3,11 +3,11 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Users, 
-  Settings, 
+import {
+  LayoutDashboard,
+  FileText,
+  Users,
+  Settings,
   ChevronRight,
   X,
   CreditCard,
@@ -22,47 +22,47 @@ interface SidebarProps {
 }
 
 export const allMenuItems = [
-  { 
-    name: '지점청구', 
-    enName: 'Branch Billing', 
-    href: '/', 
-    icon: FileText 
+  {
+    name: '지점청구',
+    enName: 'Branch Billing',
+    href: '/',
+    icon: FileText
   },
-  { 
-    name: '1일 출고 정산', 
-    enName: 'Daily Settlement', 
-    href: '/settlements/daily', 
-    icon: CreditCard 
+  {
+    name: '1일 출고 정산',
+    enName: 'Daily Settlement',
+    href: '/settlements/daily',
+    icon: CreditCard
   },
-  { 
-    name: 'GS출고정산', 
-    enName: 'GS Release', 
-    href: '/settlements/gs', 
-    icon: CreditCard 
+  {
+    name: 'GS출고정산',
+    enName: 'GS Release',
+    href: '/settlements/gs',
+    icon: CreditCard
   },
-  { 
-    name: 'GS 피킹비용정산', 
-    enName: 'GS Picking', 
-    href: '/settlements/gs-picking', 
-    icon: CreditCard 
+  {
+    name: 'GS 피킹비용정산',
+    enName: 'GS Picking',
+    href: '/settlements/gs-picking',
+    icon: CreditCard
   },
-  { 
-    name: '청구 비용 관리', 
-    enName: 'Billing Management', 
-    href: '/billing/input', 
-    icon: PenTool 
+  {
+    name: '청구 비용 관리',
+    enName: 'Billing Management',
+    href: '/billing/input',
+    icon: PenTool
   },
-  { 
-    name: '청구 조회', 
-    enName: 'Billing Inquiry', 
-    href: '/billing/inquiry', 
-    icon: Search 
+  {
+    name: '청구 조회',
+    enName: 'Billing Inquiry',
+    href: '/billing/inquiry',
+    icon: Search
   },
-  { 
-    name: '긴급 출고 조회', 
-    enName: 'Emergency Shipment', 
-    href: '/billing/emergency', 
-    icon: AlertCircle 
+  {
+    name: '긴급 출고 조회',
+    enName: 'Emergency Shipment',
+    href: '/billing/emergency',
+    icon: AlertCircle
   },
 ];
 
@@ -76,7 +76,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm lg:hidden"
           onClick={onClose}
         />
@@ -94,8 +94,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <span className="text-indigo-950 font-bold text-xl">N</span>
             </div>
             <div>
-              <h1 className="text-lg font-bold leading-tight">NDY Billing</h1>
-              <p className="text-[10px] text-indigo-300 font-medium">Logistics Solutions</p>
+              <h1 className="text-lg font-bold leading-tight">지점 청구 정산</h1>
+              <p className="text-[10px] text-indigo-300 font-medium whitespace-nowrap">NDY</p>
             </div>
           </div>
           <button onClick={onClose} className="text-indigo-300 hover:text-white transition-colors">
@@ -115,8 +115,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 href={item.href}
                 className={`
                   flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 group
-                  ${isActive 
-                    ? 'bg-indigo-800 shadow-lg text-white' 
+                  ${isActive
+                    ? 'bg-indigo-800 shadow-lg text-white'
                     : 'text-indigo-200 hover:bg-white/5 hover:text-white'}
                 `}
               >
