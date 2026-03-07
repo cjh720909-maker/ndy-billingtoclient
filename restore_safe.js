@@ -104,29 +104,29 @@ async function restoreSafe() {
     // 3. Daily Summary & GS Summary & Emergency & Inquiry
     // Special handling for unique keys
     const modelsWithUnique = [
-      { 
-        file: 'daily_summaries.json', 
-        model: 'dailySummary', 
-        unique: 'DAILY_SUMMARY_UNIQUE', 
+      {
+        file: 'daily_summaries.json',
+        model: 'dailySummary',
+        unique: 'DAILY_SUMMARY_UNIQUE',
         keys: ['startDate', 'endDate'],
         hasItems: true
       },
-      { 
-        file: 'gs_summaries.json', 
-        model: 'gSSummary', 
-        unique: 'GS_SUMMARY_UNIQUE', 
+      {
+        file: 'gs_summaries.json',
+        model: 'gSSummary',
+        unique: 'GS_SUMMARY_UNIQUE',
         keys: ['startDate', 'endDate']
       },
-      { 
-        file: 'emergency_settlements.json', 
-        model: 'emergencySettlement', 
-        unique: 'EMERG_UNIQUE', 
+      {
+        file: 'emergency_settlements.json',
+        model: 'emergencySettlement',
+        unique: 'EMERG_UNIQUE',
         keys: ['startDate', 'endDate', 'name']
       },
-      { 
-        file: 'inquiry_settlements.json', 
-        model: 'inquirySettlement', 
-        unique: 'INQUIRY_UNIQUE', 
+      {
+        file: 'inquiry_settlements.json',
+        model: 'inquirySettlement',
+        unique: 'INQUIRY_UNIQUE',
         keys: ['startDate', 'endDate', 'date', 'name', 'so', 'nap', 'kum']
       }
     ];
@@ -138,22 +138,36 @@ async function restoreSafe() {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         for (const item of data) {
           const { id, items, ...rest } = item;
-          
+
+          let finalData = { ...rest };
+          // Flatten nested summary for GSSummary
+          if (config.model === 'gSSummary' && finalData.summary) {
+            const { summary, ...others } = finalData;
+            finalData = { ...others, ...summary };
+          }
+
+          // Filter out common extra fields found in JSON but not in DB
+          if (config.model === 'inquirySettlement') {
+            const { no, isRowSaved, savedId, ...valid } = finalData;
+            finalData = valid;
+          }
+
           // Use id for where if possible, else use unique constraint
           await prisma[config.model].upsert({
             where: { id: id },
             update: {
-              ...rest,
+              ...finalData,
               createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
               updatedAt: item.updatedAt ? new Date(item.updatedAt) : undefined
             },
             create: {
-              ...rest,
+              ...finalData,
               id: id,
               createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
               updatedAt: item.updatedAt ? new Date(item.updatedAt) : undefined
             }
           });
+
 
           if (config.hasItems && Array.isArray(items)) {
             // Re-sync items for DailySummary

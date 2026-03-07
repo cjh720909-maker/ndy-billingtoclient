@@ -1,0 +1,59 @@
+
+> ndy-billingtoclient@0.1.0 build
+> prisma generate && next build
+
+warn The configuration property `package.json#prisma` is deprecated and will be removed in Prisma 7. Please migrate to a Prisma config file (e.g., `prisma.config.ts`).
+For more information, see: https://pris.ly/prisma-config
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+┌─────────────────────────────────────────────────────────┐
+│  Update available 6.19.2 -> 7.4.2                       │
+│                                                         │
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+└─────────────────────────────────────────────────────────┘
+
+✔ Generated Prisma Client (v6.19.2) to ./node_modules/.pnpm/@prisma+client@6.19.2_prisma@6.19.2_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client in 171ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+
+   ▲ Next.js 15.5.12
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 10.6s
+   Linting and checking validity of types ...
+ ⨯ ESLint: Cannot find module '/home/red/.gemini/antigravity/scratch/ndy-billingtoclient/node_modules/eslint-config-next/core-web-vitals' imported from /home/red/.gemini/antigravity/scratch/ndy-billingtoclient/eslint.config.mjs Did you mean to import eslint-config-next@15.5.12_eslint@9.39.3_jiti@2.6.1__typescript@5.9.3/node_modules/eslint-config-next/core-web-vitals.js?
+   Collecting page data ...
+   Generating static pages (0/11) ...
+   Generating static pages (2/11) 
+   Generating static pages (5/11) 
+   Generating static pages (8/11) 
+ ✓ Generating static pages (11/11)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                     323 kB         428 kB
+├ ○ /_not-found                            994 B         103 kB
+├ ○ /billing/emergency                   6.47 kB         111 kB
+├ ○ /billing/input                       6.03 kB         108 kB
+├ ○ /billing/inquiry                     5.09 kB         109 kB
+├ ○ /settlements/daily                   5.03 kB         109 kB
+├ ○ /settlements/gs                      5.41 kB         110 kB
+└ ○ /settlements/gs-picking              11.5 kB         114 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/6ee9f5d1-21ccf1713a250a03.js  54.2 kB
+  ├ chunks/977-2cccd5a7b845b42f.js       45.9 kB
+  └ other shared chunks (total)          1.92 kB
+
+
+○  (Static)  prerendered as static content
+
