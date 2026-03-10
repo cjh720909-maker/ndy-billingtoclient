@@ -19,7 +19,7 @@ model BillingItem {
   updatedAt        DateTime      @updatedAt
   rates            BillingRate[]
 
-  @@map("NDY_BillingItem")
+  @@map("NBC_BillingItem")
 }
 
 model BillingRate {
@@ -32,7 +32,7 @@ model BillingRate {
   createdAt DateTime    @default(now())
   item      BillingItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
-  @@map("NDY_BillingRate")
+  @@map("NBC_BillingRate")
 }
 
 model GSSettlement {
@@ -47,7 +47,7 @@ model GSSettlement {
   modDate DateTime @default(now())
 
   @@unique([date, code], name: "GS_UNIQUE")
-  @@map("NDY_GSSettlement")
+  @@map("NBC_GSSettlement")
 }
 
 model GSSummary {
@@ -64,7 +64,7 @@ model GSSummary {
   updatedAt   DateTime @updatedAt
 
   @@unique([startDate, endDate], name: "GS_SUMMARY_UNIQUE")
-  @@map("NDY_GSSummary")
+  @@map("NBC_GSSummary")
 }
 
 model DailySummary {
@@ -76,7 +76,7 @@ model DailySummary {
   items     DailySummaryItem[]
 
   @@unique([startDate, endDate], name: "DAILY_SUMMARY_UNIQUE")
-  @@map("NDY_DailySummary")
+  @@map("NBC_DailySummary")
 }
 
 model DailySummaryItem {
@@ -88,7 +88,7 @@ model DailySummaryItem {
   deliveryDates String[]
   summary       DailySummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
 
-  @@map("NDY_DailySummaryItem")
+  @@map("NBC_DailySummaryItem")
 }
 
 model EmergencySettlement {
@@ -104,7 +104,7 @@ model EmergencySettlement {
   createdAt DateTime @default(now())
 
   @@unique([startDate, endDate, name], name: "EMERG_UNIQUE")
-  @@map("NDY_EmergencySettlement")
+  @@map("NBC_EmergencySettlement")
 }
 
 model InquirySettlement {
@@ -124,7 +124,7 @@ model InquirySettlement {
   createdAt DateTime @default(now())
 
   @@unique([startDate, endDate, date, name, so, nap, kum], name: "INQUIRY_UNIQUE")
-  @@map("NDY_InquirySettlement")
+  @@map("NBC_InquirySettlement")
 }
 
 model EmergencyRate {
@@ -133,7 +133,7 @@ model EmergencyRate {
   chung     String   @default("")
   updatedAt DateTime @updatedAt
 
-  @@map("NDY_EmergencyRate")
+  @@map("NBC_EmergencyRate")
 }
 
 model FixedSettlement {
@@ -146,7 +146,7 @@ model FixedSettlement {
   note             String?
   createdAt        DateTime @default(now())
 
-  @@map("NDY_FixedSettlement")
+  @@map("NBC_FixedSettlement")
 }
 
 model Config {
@@ -154,7 +154,7 @@ model Config {
   data      Json
   updatedAt DateTime @updatedAt
 
-  @@map("NDY_Config")
+  @@map("NBC_Config")
 }
 
 model MonthlyClosing {
@@ -165,5 +165,5 @@ model MonthlyClosing {
   closedAt  DateTime @default(now())
 
   @@unique([startDate, endDate], name: "CLOSING_UNIQUE")
-  @@map("NDY_MonthlyClosing")
+  @@map("NBC_MonthlyClosing")
 }

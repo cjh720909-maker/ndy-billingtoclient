@@ -1,6 +1,8 @@
 const { PrismaClient } = require('@prisma/client');
+console.log('script started');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 const prisma = new PrismaClient();
 
 async function restoreSafe() {
@@ -151,10 +153,24 @@ async function restoreSafe() {
             const { no, isRowSaved, savedId, ...valid } = finalData;
             finalData = valid;
           }
+          if (config.model === 'emergencySettlement') {
+            const { memo, ...valid } = finalData;
+            finalData = valid;
+          }
 
-          // Use id for where if possible, else use unique constraint
+
+          // Determine where clause: use unique constraint if available, else fallback to id
+          let whereClause = { id: id };
+          if (config.unique && config.keys) {
+            const uniqueSelector = {};
+            config.keys.forEach(k => {
+              uniqueSelector[k] = finalData[k];
+            });
+            whereClause = { [config.unique]: uniqueSelector };
+          }
+
           await prisma[config.model].upsert({
-            where: { id: id },
+            where: whereClause,
             update: {
               ...finalData,
               createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
@@ -167,6 +183,7 @@ async function restoreSafe() {
               updatedAt: item.updatedAt ? new Date(item.updatedAt) : undefined
             }
           });
+
 
 
           if (config.hasItems && Array.isArray(items)) {
@@ -192,8 +209,9 @@ async function restoreSafe() {
     if (fs.existsSync(path.join(dataDir, 'gs_settlements.json'))) {
       console.log('Restoring GS Settlements...');
       const gsData = JSON.parse(fs.readFileSync(path.join(dataDir, 'gs_settlements.json'), 'utf8'));
-      for (const item of gsData) {
-        const { id, ...rest } = item;
+      for (const id in gsData) {
+        const item = gsData[id];
+        const { isSaved, ...rest } = item;
         await prisma.gSSettlement.upsert({
           where: { id: id },
           update: rest,
@@ -206,17 +224,22 @@ async function restoreSafe() {
       console.log('GS Settlements restored.');
     }
 
+
     // 5. Emergency Rates
     if (fs.existsSync(path.join(dataDir, 'emergency_rates.json'))) {
+      console.log('Restoring Emergency Rates...');
       const rates = JSON.parse(fs.readFileSync(path.join(dataDir, 'emergency_rates.json'), 'utf8'));
-      for (const r of rates) {
+      for (const name in rates) {
+        const rate = rates[name];
         await prisma.emergencyRate.upsert({
-          where: { name: r.name },
-          update: { rate: r.rate, chung: r.chung || '' },
-          create: { name: r.name, rate: r.rate, chung: r.chung || '' }
+          where: { name: name },
+          update: { rate: rate, chung: '' },
+          create: { name: name, rate: rate, chung: '' }
         });
       }
+      console.log('Emergency Rates restored.');
     }
+
 
     console.log('Safe restoration successful.');
   } catch (e) {
