@@ -61,6 +61,9 @@ export default function GSReleaseSettlementPage() {
   
   // 편집 상태 관리 (key: date_code, value: 수정된 필드들)
   const [editState, setEditState] = useState<Record<string, any>>({});
+  
+  // 날짜별 세부내역 및 비고 등 수정 상태
+  const [dateDetails, setDateDetails] = useState<Record<string, { amount: number; details: string; remarks: string }>>({});
 
   const totals = React.useMemo(() => {
     if (data.length > 0) {
@@ -85,6 +88,11 @@ export default function GSReleaseSettlementPage() {
     
     if (result.success && result.data) {
       setGsState({ data: result.data, isSaved: !!result.isSaved, hasSearched: true });
+      if (result.dateDetails && Object.keys(result.dateDetails).length > 0) {
+        setDateDetails(result.dateDetails);
+      } else {
+        setDateDetails({}); // reset
+      }
     } else {
       setGsState({ data: [], isSaved: false, hasSearched: true });
     }
@@ -102,6 +110,16 @@ export default function GSReleaseSettlementPage() {
     if (data.length === 0) return;
     setSaving(true);
     
+    const mergedDetails: any = {};
+    matrixData.dates.forEach(date => {
+       const existing = dateDetails[date];
+       mergedDetails[date] = {
+         amount: existing?.amount !== undefined ? existing.amount : (matrixData.settlementInfo[date]?.amount || 0),
+         details: existing?.details !== undefined ? existing.details : (matrixData.settlementInfo[date]?.details || ''),
+         remarks: existing?.remarks !== undefined ? existing.remarks : ''
+       };
+    });
+
     // 요약 데이터 생성
     const summary = {
       weekday: summaryInfo.weekday,
@@ -109,19 +127,23 @@ export default function GSReleaseSettlementPage() {
       sunday: summaryInfo.sunday,
       extraTrucks: summaryInfo.totalExtraTrucks,
       totalAmount: summaryInfo.totalAmount,
-      dates: matrixData.dates // 전체 배송일 리스트 추가
+      dates: matrixData.dates,
+      dateDetails: mergedDetails
     };
     
-    const result = await saveGSSummary({
-      startDate,
-      endDate,
-      summary
-    });
+    const [summaryResult, dataResult] = await Promise.all([
+      saveGSSummary({
+        startDate,
+        endDate,
+        summary
+      }),
+      saveGSSettlements(data)
+    ]);
     
-    if (result.success) {
+    if (summaryResult.success && dataResult.success) {
       setGsState({ isSaved: true });
       setHasChanges(false);
-      alert('요약 정산 정보가 저장되었습니다.');
+      alert('정산 정보가 저장되었습니다.');
       fetchData(startDate, endDate, searchTerm);
     } else {
       alert('저장에 실패했습니다.');
@@ -158,6 +180,34 @@ export default function GSReleaseSettlementPage() {
     });
     setGsState({ data: newData });
     
+    setHasChanges(true);
+  };
+
+  const handleDateDetailChange = (date: string, field: 'amount' | 'details' | 'remarks', value: string) => {
+    setDateDetails(prev => {
+      const prevEntry = prev[date] || {
+        amount: matrixData.settlementInfo[date]?.amount || 0, 
+        details: matrixData.settlementInfo[date]?.details || '', 
+        remarks: ''
+      };
+
+      let newAmount = prevEntry.amount;
+      if (field === 'details') {
+        const parts = value.split('+').map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+        newAmount = parts.reduce((acc, curr) => acc + curr * 10000, 0);
+      } else if (field === 'amount') {
+        newAmount = Number(value.replace(/,/g, '')) || 0;
+      }
+
+      return {
+        ...prev,
+        [date]: {
+          ...prevEntry,
+          [field]: field === 'amount' ? newAmount : value,
+          ...(field === 'details' ? { amount: newAmount } : {})
+        }
+      };
+    });
     setHasChanges(true);
   };
 
@@ -252,13 +302,13 @@ export default function GSReleaseSettlementPage() {
     return { dates, places, grid, dateTotals, placeTotals, placeCounts, settlementInfo };
   }, [data]);
 
-  // [수정] 전체 요약 통계 계산 (평일/토/일 및 2회전 횟수 합산)
+  // [수정] 전체 요약 통계 계산 (평일/토/일 및 2회전 횟수 합산, 수정한 정산금액 반영)
   const summaryInfo = React.useMemo(() => {
     let weekday = 0;
     let saturday = 0;
     let sunday = 0;
     let totalExtraTrucks = 0;
-    let dailyBaseAmount = 150000; // 12+3만 기본
+    let totalAmount = 0;
 
     matrixData.dates.forEach(dateStr => {
       const dateVal = new Date(dateStr);
@@ -271,12 +321,17 @@ export default function GSReleaseSettlementPage() {
       const weight = matrixData.dateTotals[dateStr] || 0;
       const extra = Math.max(0, Math.ceil(weight / 550) - 1);
       totalExtraTrucks += extra;
+
+      // 정산 금액: 수정된 내역이 있으면 수정액 기준, 없으면 자동 계산 결과 기준
+      const amount = dateDetails[dateStr]?.amount !== undefined
+        ? dateDetails[dateStr].amount
+        : (matrixData.settlementInfo[dateStr]?.amount || 0);
+
+      totalAmount += amount;
     });
 
-    const totalAmount = ((weekday + saturday + sunday) * dailyBaseAmount) + (totalExtraTrucks * 120000);
-
     return { weekday, saturday, sunday, totalExtraTrucks, totalAmount };
-  }, [matrixData.dates, matrixData.dateTotals]);
+  }, [matrixData.dates, matrixData.dateTotals, matrixData.settlementInfo, dateDetails]);
 
   const dayCounts = summaryInfo; // 기존 변수 호환성 유지
 
@@ -400,14 +455,17 @@ export default function GSReleaseSettlementPage() {
                       <div className="text-[15px] font-black text-indigo-600 leading-tight">{matrixData.placeCounts[place.code] || 0}일</div>
                     </th>
                   ))}
-                  <th className="sticky right-[230px] z-30 bg-indigo-50 min-w-[80px] px-2 py-2 text-[11px] font-bold text-indigo-700 uppercase tracking-wider text-center border-l border-indigo-100">
+                  <th className="sticky right-[330px] z-30 bg-indigo-50 min-[80px]:w-auto w-[80px] px-2 py-2 text-[11px] font-bold text-indigo-700 uppercase tracking-wider text-center border-l border-indigo-100">
                     합계
                   </th>
-                  <th className="sticky right-[120px] z-30 bg-emerald-50 min-w-[110px] px-2 py-2 text-[11px] font-bold text-emerald-700 uppercase tracking-wider text-center border-l border-emerald-100">
+                  <th className="sticky right-[220px] z-30 bg-emerald-50 min-[110px]:w-auto w-[110px] px-2 py-2 text-[11px] font-bold text-emerald-700 uppercase tracking-wider text-center border-l border-emerald-100">
                     정산금액
                   </th>
-                  <th className="sticky right-0 z-30 bg-slate-50 min-w-[120px] px-2 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center border-l border-slate-200">
+                  <th className="sticky right-[100px] z-30 bg-slate-50 min-[120px]:w-auto w-[120px] px-2 py-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center border-l border-slate-200">
                     정산세부내역
+                  </th>
+                  <th className="sticky right-0 z-30 bg-amber-50 min-[100px]:w-auto w-[100px] px-2 py-2 text-[11px] font-bold text-amber-700 uppercase tracking-wider text-center border-l border-amber-200">
+                    비고
                   </th>
                 </tr>
               </thead>
@@ -449,14 +507,34 @@ export default function GSReleaseSettlementPage() {
                         </td>
                       );
                     })}
-                    <td className={`sticky right-[230px] z-20 bg-indigo-50/30 px-2 py-1.5 text-[11px] font-bold text-right border-l border-indigo-100 ${matrixData.dateTotals[date] > 550 ? 'text-red-600 font-black' : 'text-indigo-700'}`}>
+                    <td className={`sticky right-[330px] z-20 bg-indigo-50/30 px-2 py-1.5 text-[11px] font-bold text-right border-l border-indigo-100 ${matrixData.dateTotals[date] > 550 ? 'text-red-600 font-black' : 'text-indigo-700'}`}>
                       {(matrixData.dateTotals[date] || 0).toLocaleString()}
                     </td>
-                    <td className="sticky right-[120px] z-20 bg-emerald-50/20 px-2 py-1.5 text-[11px] font-black text-right text-emerald-700 border-l border-emerald-100">
-                      {(matrixData.settlementInfo[date]?.amount || 0).toLocaleString()}
+                    <td className="sticky right-[220px] z-20 bg-emerald-50/20 px-2 py-1.5 text-[11px] font-black text-right text-emerald-700 border-l border-emerald-100">
+                      <input 
+                        type="text"
+                        value={(dateDetails[date]?.amount !== undefined ? dateDetails[date].amount : (matrixData.settlementInfo[date]?.amount || 0)).toLocaleString()}
+                        onChange={(e) => handleDateDetailChange(date, 'amount', e.target.value)}
+                        className="w-full text-right bg-transparent outline-none border-b border-transparent hover:border-emerald-200 focus:border-emerald-400"
+                      />
                     </td>
-                    <td className="sticky right-0 z-20 bg-white px-2 py-1.5 text-[11px] font-bold text-slate-500 border-l border-slate-100 truncate text-center">
-                      {matrixData.settlementInfo[date]?.details || '-'}
+                    <td className="sticky right-[100px] z-20 bg-white px-2 py-1.5 text-[11px] font-bold text-slate-500 border-l border-slate-100 text-center">
+                      <input 
+                        type="text"
+                        value={dateDetails[date]?.details !== undefined ? dateDetails[date].details : (matrixData.settlementInfo[date]?.details || '')}
+                        onChange={(e) => handleDateDetailChange(date, 'details', e.target.value)}
+                        placeholder="-"
+                        className="w-full text-center bg-transparent outline-none border-b border-transparent hover:border-slate-200 focus:border-slate-400"
+                      />
+                    </td>
+                    <td className="sticky right-0 z-20 bg-amber-50/10 px-2 py-1.5 text-[11px] font-medium text-slate-600 border-l border-slate-100 text-center">
+                      <input 
+                        type="text"
+                        value={dateDetails[date]?.remarks || ''}
+                        onChange={(e) => handleDateDetailChange(date, 'remarks', e.target.value)}
+                        placeholder="비고"
+                        className="w-full text-center bg-transparent outline-none border-b border-transparent hover:border-amber-200 focus:border-amber-400"
+                      />
                     </td>
                   </tr>
                 ))}
@@ -470,11 +548,14 @@ export default function GSReleaseSettlementPage() {
                       {(matrixData.placeTotals[place.code] || 0).toLocaleString()}
                     </td>
                   ))}
-                  <td className="sticky right-[230px] z-30 bg-indigo-100 px-2 py-2 text-[11px] text-right text-indigo-800 border-l border-indigo-200 border-t border-indigo-300">
+                  <td className="sticky right-[330px] z-30 bg-indigo-100 px-2 py-2 text-[11px] text-right text-indigo-800 border-l border-indigo-200 border-t border-indigo-300">
                     {Object.values(matrixData.placeTotals || {}).reduce((a, b) => a + b, 0).toLocaleString()}
                   </td>
-                  <td className="sticky right-[120px] z-30 bg-emerald-100 px-2 py-2 text-[11px] text-right text-emerald-800 border-l border-emerald-200 border-t border-emerald-300">
-                    {Object.values(matrixData.settlementInfo).reduce((acc, cur) => acc + cur.amount, 0).toLocaleString()}
+                  <td className="sticky right-[220px] z-30 bg-emerald-100 px-2 py-2 text-[11px] text-right text-emerald-800 border-l border-emerald-200 border-t border-emerald-300">
+                    {matrixData.dates.reduce((acc, date) => acc + (dateDetails[date]?.amount !== undefined ? dateDetails[date].amount : (matrixData.settlementInfo[date]?.amount || 0)), 0).toLocaleString()}
+                  </td>
+                  <td className="sticky right-[100px] z-30 bg-slate-100 px-2 py-2 text-[11px] text-right text-slate-500 border-l border-slate-200 border-t border-slate-300">
+                    -
                   </td>
                   <td className="sticky right-0 z-30 bg-slate-100 px-2 py-2 text-[11px] text-right text-slate-500 border-l border-slate-200 border-t border-slate-300">
                     -

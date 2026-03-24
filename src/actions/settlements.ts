@@ -67,6 +67,7 @@ export async function saveGSSummary(params: {
     extraTrucks: number;
     totalAmount: number;
     dates?: string[];
+    dateDetails?: any;
   };
 }) {
   try {
@@ -83,7 +84,8 @@ export async function saveGSSummary(params: {
         sunday: params.summary.sunday,
         extraTrucks: params.summary.extraTrucks,
         totalAmount: params.summary.totalAmount,
-        dates: params.summary.dates || []
+        dates: params.summary.dates || [],
+        dateDetails: params.summary.dateDetails || null
       },
       create: {
         startDate: params.startDate,
@@ -93,7 +95,8 @@ export async function saveGSSummary(params: {
         sunday: params.summary.sunday,
         extraTrucks: params.summary.extraTrucks,
         totalAmount: params.summary.totalAmount,
-        dates: params.summary.dates || []
+        dates: params.summary.dates || [],
+        dateDetails: params.summary.dateDetails || null
       }
     });
 
@@ -414,6 +417,7 @@ export async function getDailySettlements(params: {
 
     // [저장 상태 확인] 일일 출고 정산(daily)인 경우 확인
     let isSaved = false;
+    let dateDetails: any = null;
     if (type === 'daily') {
       const summary = await prisma.dailySummary.findFirst({
         where: { startDate, endDate }
@@ -421,9 +425,15 @@ export async function getDailySettlements(params: {
       isSaved = !!summary;
     } else if (isGSType) {
       isSaved = result.some((r: any) => r.isSaved);
+      const summary = await prisma.gSSummary.findFirst({
+        where: { startDate, endDate }
+      });
+      if (summary) {
+        dateDetails = summary.dateDetails || null;
+      }
     }
 
-    return { success: true, data: result, isSaved };
+    return { success: true, data: result, isSaved, dateDetails };
   } catch (error) {
     console.error('Failed to fetch settlements:', error);
     return { success: false, error: '데이터를 가져오는 중 오류가 발생했습니다.' };
