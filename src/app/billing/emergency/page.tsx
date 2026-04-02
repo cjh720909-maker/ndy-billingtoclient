@@ -84,15 +84,9 @@ export default function EmergencyShipmentPage() {
     }
   }, []);
 
-  // 스토어에 데이터가 없거나 처음 진입 시 조회
-  useEffect(() => {
-    if (!hasSearched) {
-      fetchData(startDate, endDate);
-    }
-  }, [hasSearched, startDate, endDate, fetchData]);
 
   const handleSearch = () => {
-    setSelectedMonth(getKSTToday());
+    fetchData(startDate, endDate);
   };
 
   const toggleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {

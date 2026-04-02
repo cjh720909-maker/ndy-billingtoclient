@@ -99,12 +99,6 @@ export default function GSReleaseSettlementPage() {
     setLoading(false);
   }, [setGsState]);
 
-  // 스토어에 데이터가 없거나 처음 진입 시 조회
-  useEffect(() => {
-    if (!hasSearched) {
-      fetchData(startDate, endDate, searchTerm);
-    }
-  }, [hasSearched, startDate, endDate, searchTerm, fetchData]);
 
   const handleSave = async () => {
     if (data.length === 0) return;

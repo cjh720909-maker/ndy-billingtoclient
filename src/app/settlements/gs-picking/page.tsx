@@ -68,10 +68,6 @@ export default function GSPickingSettlementPage() {
     };
     loadConfig();
   }, []);
-  // 초기 데이터 조회
-  useEffect(() => {
-    fetchData(startDate, endDate, searchTerm);
-  }, [startDate, endDate]); // Re-fetch when the month selector changes the derived dates
 
   const fetchData = async (start: string, end: string, term: string) => {
     setLoading(true);

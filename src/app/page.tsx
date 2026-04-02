@@ -88,11 +88,6 @@ export default function Home() {
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (!hasSearched) {
-      fetchData(startDate, endDate);
-    }
-  }, [startDate, endDate, hasSearched, fetchData]);
 
   const handleSearch = () => fetchData(startDate, endDate);
 

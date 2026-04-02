@@ -91,12 +91,6 @@ export default function DailySettlementPage() {
     setLoading(false);
   }, [setDailyState]);
 
-  // 스토어에 조회 이력이 없고, 단가 정보가 로드되었을 때만 초기 조회
-  useEffect(() => {
-    if (billingItems.length > 0 && !hasSearched) {
-      fetchData(startDate, endDate, searchTerm);
-    }
-  }, [billingItems.length, hasSearched, startDate, endDate, searchTerm, fetchData]);
 
   // 조회 버튼 클릭 시 호출
   const handleSearch = () => {
